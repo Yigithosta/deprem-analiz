@@ -1,9 +1,3 @@
-# MEDAIGENCY — Lot C Operasyon Konsolu (React Native)
-
-**AI-Driven Disaster Resilience, Medical Response, and Multi-Purpose Resource Logistics Management System**
-İzmir Katip Çelebi Üniversitesi (İKÇÜ) — Interreg NEXT MED MEDAIGENCY Projesi, Lot C
-Venus Robotik Medikal ve Protez A.Ş.
-
 Afet hazırlığı, acil müdahale ve kaynak lojistiği için YZ destekli operasyon konsolunun
 React Native / Expo gerçeklemesi. Tek kod tabanı web, iOS ve Android'de çalışır.
 
