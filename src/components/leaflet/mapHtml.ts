@@ -1,4 +1,4 @@
-import { C, alpha, hazardColor, hazardLabel } from "../../theme/tokens";
+import { C, alpha, hazardColor, hazardLabel, themeMode } from "../../theme/tokens";
 import {
   GIS_AI_ZONES,
   GIS_CORRIDORS,
@@ -15,9 +15,9 @@ import {
 
 /**
  * Leaflet (BSD-2, github.com/Leaflet/Leaflet) tabanlı OSM harita belgesi.
- * DSN-002 "OSM Servisi" gereksiniminin gerçeklemesi: karolar OpenStreetMap
- * verisini de içeren Esri World Dark Gray Canvas setinden gelir, operasyonel
- * katmanlar (PF-DAT06 / PF-GET03) bunun üzerine vektör olarak bindirilir.
+ * Karolar OpenStreetMap verisini de içeren Esri World Gray Canvas setinden
+ * gelir (koyu temada Dark Gray, açık temada Light Gray); operasyonel katmanlar (harita verisi, yol riski) bunun
+ * üzerine vektör olarak bindirilir.
  *
  * Belge hem web'de <iframe srcDoc>, hem de iOS/Android'de react-native-webview
  * içinde aynı biçimde çalışır; katman aç/kapa mesajla iletilir, böylece kullanıcı
@@ -27,21 +27,21 @@ import {
 const LEAFLET_VERSION = "1.9.4";
 
 /**
- * Anahtar gerektirmeyen koyu karo seti — CARTO Dark Matter artık API anahtarı
+ * Anahtar gerektirmeyen gri karo setleri — CARTO Dark Matter artık API anahtarı
  * istiyor ve anahtarsız isteklere filigranlı karo döndürüyor. Esri'de yer
  * adları ayrı bir katmanda gelir; attribution lisans gereği zorunludur.
  */
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas";
-const TILES = {
-  url: `${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
-  labelsUrl: `${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
+const tiles = (dark: boolean) => ({
+  url: `${ESRI}/World_${dark ? "Dark" : "Light"}_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  labelsUrl: `${ESRI}/World_${dark ? "Dark" : "Light"}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`,
   attribution:
     '&copy; <a href="https://www.esri.com">Esri</a> &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> katkıcıları',
   maxZoom: 16,
-};
+});
 
 const riskCol = (risk: string) =>
-  risk === "critical" ? C.critical : risk === "high" ? C.warning : risk === "medium" ? "#F97316" : C.success;
+  risk === "critical" ? C.critical : risk === "high" ? C.danger : risk === "medium" ? C.warning : C.success;
 
 const dashFor = (status: string) =>
   status === "risky" ? "6,5" : status === "constrained" ? "10,6" : undefined;
@@ -103,6 +103,11 @@ function payload() {
  */
 export function buildMapHtml(compact: boolean): string {
   const data = JSON.stringify(payload()).replace(/</g, "\\u003c");
+  const dark = themeMode() === "dark";
+  const TILES = tiles(dark);
+  // Etiket halesi altlığın tersine çizilir: koyu altlıkta siyah, açıkta beyaz.
+  const halo = dark ? "#000" : "#fff";
+  const fault = dark ? "#F87171" : "#7F1D1D";
 
   return `<!doctype html>
 <html lang="tr">
@@ -111,12 +116,12 @@ export function buildMapHtml(compact: boolean): string {
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css" />
 <style>
-  html, body, #map { margin:0; padding:0; height:100%; width:100%; background:#07101f; }
-  .leaflet-container { background:#07101f; font-family: Inter, system-ui, -apple-system, sans-serif; outline:none; }
+  html, body, #map { margin:0; padding:0; height:100%; width:100%; background:${C.mapBg}; }
+  .leaflet-container { background:${C.mapBg}; font-family: Inter, system-ui, -apple-system, sans-serif; outline:none; }
   .leaflet-control-attribution {
     background: ${alpha(C.card, 0.85)}; color: ${C.muted}; font-size: 9px; border-radius: 4px 0 0 0;
   }
-  .leaflet-control-attribution a { color: ${C.info}; }
+  .leaflet-control-attribution a { color: ${C.txt2}; }
   .leaflet-control-zoom a {
     background: ${C.card}; color: ${C.txt}; border-color: ${C.border};
   }
@@ -148,7 +153,7 @@ export function buildMapHtml(compact: boolean): string {
   .mk .cap {
     position:absolute; top:100%; left:50%; transform:translateX(-50%);
     margin-top:3px; white-space:nowrap; text-align:center;
-    font-size:10px; line-height:1.25; text-shadow:0 1px 3px #000, 0 0 6px #000;
+    font-size:10px; line-height:1.25; text-shadow:0 0 3px ${halo}, 0 0 3px ${halo}, 0 0 6px ${halo};
   }
   .mk .cap .n { color:${C.txt2}; display:block; }
   .mk .cap .v { font-weight:700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -159,11 +164,11 @@ export function buildMapHtml(compact: boolean): string {
   @keyframes pl { 0%{transform:scale(.7);opacity:.55} 100%{transform:scale(1.25);opacity:0} }
   .corLabel {
     font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace;
-    white-space:nowrap; text-shadow:0 1px 3px #000, 0 0 6px #000;
+    white-space:nowrap; text-shadow:0 0 3px ${halo}, 0 0 3px ${halo}, 0 0 6px ${halo};
   }
   .zoneLabel {
     font: 600 11px Inter, system-ui, sans-serif; white-space:nowrap;
-    text-shadow:0 1px 3px #000, 0 0 6px #000;
+    text-shadow:0 0 3px ${halo}, 0 0 3px ${halo}, 0 0 6px ${halo};
   }
   .leaflet-div-icon { background:none; border:none; }
 
@@ -275,7 +280,7 @@ export function buildMapHtml(compact: boolean): string {
     var html =
       '<div class="mk" style="width:' + size + 'px;height:' + size + 'px;color:' + opts.color + '">' +
         (opts.pulse ? '<span class="pulse"></span>' : '') +
-        '<span class="ring" style="background:conic-gradient(' + opts.color + ' ' + deg + 'deg, #1e3a5f 0)"></span>' +
+        '<span class="ring" style="background:conic-gradient(' + opts.color + ' ' + deg + 'deg, ${C.borderStrong} 0)"></span>' +
         '<span class="body ' + (opts.shape || '') + '" style="width:' + (size - 10) + 'px;height:' + (size - 10) + 'px;' +
           'background:' + opts.fill + ';border:1px solid ' + opts.color + ';border-radius:' + (opts.radius || '3px') + ';' +
           'color:' + (opts.textColor || '#fff') + ';font-size:' + (opts.fontSize || 10) + 'px">' +
@@ -387,7 +392,7 @@ export function buildMapHtml(compact: boolean): string {
     // koridorlara uygulanır (giriş noktaları her zaman görünür kalmalı).
     if (!c.international) track('corridors', c.rank, parts);
 
-    // Akış parçacıkları (PF-GET03 kaynak hareketi görselleştirmesi)
+    // Akış parçacıkları (kaynak hareketi görselleştirmesi)
     var dots = [0, 0.33, 0.66].map(function (off, i) {
       var m = L.circleMarker(pts[0], {
         radius: c.international ? 3 : 3.6, color: c.color, fillColor: c.color,
@@ -441,7 +446,7 @@ export function buildMapHtml(compact: boolean): string {
   heat(D.heat.resourceDeficit, G.resourceDeficit);
   heat(D.heat.population, G.population);
 
-  // ── DEPREM RİSK ISI HARİTASI (PF-AI01 Hazard × PF-AI02 Risk) ──
+  // ── DEPREM RİSK ISI HARİTASI (tehlike × risk modeli) ──
   // Beş kademeli iç içe halka, tek renkli ısı katmanlarına göre daha yumuşak bir
   // geçiş verir; her odak kendi skorundan türeyen rengi taşır.
   D.seismic.forEach(function (s) {
@@ -458,7 +463,7 @@ export function buildMapHtml(compact: boolean): string {
     L.circle([s.lat, s.lng], { radius: s.radius * 0.18, color: s.color, weight: 1, opacity: 0.5, fillOpacity: 0 })
       .bindPopup('<b>' + esc(s.name) + '</b><br><span class="k">Risk skoru:</span> <b style="color:' + s.color + '">' +
                  s.score + '/100 · ' + esc(s.level) + '</b><br><span class="k">PGA (475 yıl):</span> ' +
-                 s.pga.toFixed(2) + 'g<br><span class="k">Model:</span> PF-AI01 × PF-AI02')
+                 s.pga.toFixed(2) + 'g<br><span class="k">Model:</span> Tehlike × Risk')
       .addTo(G.seismicRisk);
     if (!COMPACT) {
       L.marker([s.lat, s.lng], {
@@ -474,13 +479,13 @@ export function buildMapHtml(compact: boolean): string {
 
   // ── DİRİ FAY HATLARI ──
   D.faults.forEach(function (f) {
-    L.polyline(f.coords, { color: '#F87171', weight: 6, opacity: 0.1 }).addTo(G.faults);
-    L.polyline(f.coords, { color: '#F87171', weight: 1.6, opacity: 0.8, dashArray: '9,4' })
+    L.polyline(f.coords, { color: '${fault}', weight: 6, opacity: 0.08 }).addTo(G.faults);
+    L.polyline(f.coords, { color: '${fault}', weight: 1.4, opacity: 0.75, dashArray: '9,4' })
       .bindPopup('<b>' + esc(f.name) + '</b><br><span class="k">Diri fay zonu · yaklaşık yüzey izi</span>')
       .addTo(G.faults);
   });
 
-  // ── YZ TAHMİN KATMANI (CON-007: yalnızca gösterim) ──
+  // ── YZ TAHMİN KATMANI (yalnızca gösterim; karar insan onayına bağlı) ──
   D.aiZones.forEach(function (z) {
     var shape = z.kind === 'rect'
       ? L.rectangle(z.bounds, { color: z.color, weight: 1.5, dashArray: '7,5', fillColor: z.color, fillOpacity: 0.05 })

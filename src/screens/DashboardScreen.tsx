@@ -1,41 +1,45 @@
 import React, { useState } from "react";
 import { View, Pressable, StyleSheet, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, RADIUS, loadColor } from "../theme/tokens";
+import { C, alpha, RADIUS, loadColor, themed } from "../theme/tokens";
 import { Screen, Cols } from "../components/Screen";
-import {
-  Txt, Row, Grid, Card, KPICard, SectionHeader, ScreenHeader, Bar, PFBadge,
-} from "../components/ui";
+import { Txt, Row, Grid, Card, KPICard, SectionHeader, ScreenHeader, Bar } from "../components/ui";
 import { OperationalMap } from "../components/OperationalMap";
 import { AIRecCard } from "../components/AIRecCard";
-import { aiRecs, hospitalRows, GIS_SAFE_NODES, resourceItems } from "../data/mock";
+import { hospitalRows, GIS_SAFE_NODES, resourceItems } from "../data/mock";
+import { useApp } from "../state/AppState";
 
 /**
- * SRS §3.1.1 — Operasyon Paneli (Figure 3-1).
+ * Operasyon Paneli — ana karşılama ekranı.
  * Üst seviye operasyonel göstergeler, etkilenen bölgenin GIS haritası,
  * YZ Karar Destek Merkezi ve tıbbi kapasite / Güvenli Düğüm envanteri /
  * kaynak hazırlığı / simülasyon çıktısı özet panelleri.
  */
 export function DashboardScreen() {
+  const { recommendations } = useApp();
   const [expanded, setExpanded] = useState<number | null>(1);
   const [banner, setBanner] = useState(true);
   const { width } = useWindowDimensions();
 
-  // Salt-okunur konsol: öneriler karara bağlanmadığı için tümü açık sayılır.
-  const pending = aiRecs.length;
+  const pending = recommendations.filter((r) => r.status === "pending" || r.status === "recomputing").length;
   const mapHeight = width >= 1000 ? 430 : width >= 700 ? 360 : 300;
+  // Geniş ekranda 4, dar ekranda 2 sütunlu gösterge ızgarası.
+  const kpiMin = width >= 1000 ? 220 : 160;
 
   return (
     <View style={{ flex: 1 }}>
       {banner && (
         <View style={s.banner}>
-          <Feather name="alert-triangle" size={14} color="#fff" />
-          <Txt size={11} weight="700" color="#fff" style={{ flex: 1 }}>
-            KRİTİK: Adana ve Hatay illerinde YBÜ kapasitesi 8 saat içinde aşılacak — Lojistik koridor C-02 riskli —
+          <Feather name="alert-octagon" size={15} color={C.critical} />
+          <Txt size={12} color={C.txt} style={{ flex: 1, lineHeight: 17 }}>
+            <Txt size={12} weight="700" color={C.critical}>
+              Kritik ·{" "}
+            </Txt>
+            Adana ve Hatay illerinde YBÜ kapasitesi 8 saat içinde aşılacak — Lojistik koridor C-02 riskli —
             Acil kaynak hareketi gerekiyor
           </Txt>
-          <Pressable onPress={() => setBanner(false)} hitSlop={8}>
-            <Feather name="x" size={15} color="#fff" />
+          <Pressable onPress={() => setBanner(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Uyarıyı kapat">
+            <Feather name="x" size={15} color={C.muted} />
           </Pressable>
         </View>
       )}
@@ -44,20 +48,19 @@ export function DashboardScreen() {
         <ScreenHeader
           title="Operasyon Panosu"
           subtitle="Birleşik operasyonel görünüm — hastane yükü, kaynak hazırlığı, koridor sağlığı ve YZ karar desteği"
-          pfs={["PF-SYS02", "PF-EMG01", "PF-GET07", "PF-GET08", "PF-AI04"]}
-          note="Veriler AFAD, Kızılay, Sağlık Bakanlığı ve 112 arayüzlerinden Redis akış çekirdeği üzerinden gelir (DSN-001)."
+          note="Veriler AFAD, Kızılay, Sağlık Bakanlığı ve 112 arayüzlerinden olay akış çekirdeği üzerinden gelir."
         />
 
         {/* KPI şeridi */}
         <Grid gap={10}>
-          <KPICard label="Hastane Yük Endeksi" value="%91" trend={9} color={C.danger} icon="heart" minWidth={140} />
-          <KPICard label="Kaynak Hazırlık" value="%73" sub="hedef ≥%85" trend={-4} color={C.warning} icon="package" minWidth={140} />
-          <KPICard label="Güvenli Düğüm" value="12/18" sub="hazır" color={C.success} icon="shield" minWidth={140} />
-          <KPICard label="Koridor Sağlığı" value="%68" trend={-8} color={C.critical} icon="git-branch" minWidth={140} />
-          <KPICard label="Uluslararası Yardım" value="7 Ülke" sub="aktif" color={C.gis} icon="globe" minWidth={140} />
-          <KPICard label="Tahmin Güveni" value="%91" color={C.ai} icon="cpu" minWidth={140} />
-          <KPICard label="YZ Öneri" value={String(pending)} sub="aktif tavsiye" color={C.ai} icon="zap" minWidth={140} />
-          <KPICard label="Veri Senkron." value="12sn" color={C.success} icon="refresh-cw" minWidth={140} />
+          <KPICard label="Hastane Yük Endeksi" value="%91" trend={9} color={C.danger} icon="heart" minWidth={kpiMin} />
+          <KPICard label="Kaynak Hazırlık" value="%73" sub="hedef ≥%85" trend={-4} color={C.warning} icon="package" minWidth={kpiMin} />
+          <KPICard label="Güvenli Düğüm" value="12/18" sub="hazır" color={C.success} icon="shield" minWidth={kpiMin} />
+          <KPICard label="Koridor Sağlığı" value="%68" trend={-8} color={C.critical} icon="git-branch" minWidth={kpiMin} />
+          <KPICard label="Uluslararası Yardım" value="7 Ülke" sub="aktif" color={C.gis} icon="globe" minWidth={kpiMin} />
+          <KPICard label="Tahmin Güveni" value="%91" color={C.ai} icon="cpu" minWidth={kpiMin} />
+          <KPICard label="YZ Öneri" value={String(pending)} sub="karar bekliyor" color={C.ai} icon="zap" minWidth={kpiMin} />
+          <KPICard label="Veri Senkron." value="12sn" color={C.success} icon="refresh-cw" minWidth={kpiMin} />
         </Grid>
 
         {/* Harita + YZ karar destek */}
@@ -87,11 +90,11 @@ export function DashboardScreen() {
               </Txt>
               <View style={[s.pendingChip, { backgroundColor: alpha(C.ai, 0.16) }]}>
                 <Txt size={9.5} weight="700" color={C.ai}>
-                  {`${pending} TAVSİYE`}
+                  {`${pending} KARAR BEKLİYOR`}
                 </Txt>
               </View>
             </Row>
-            {aiRecs.map((rec) => (
+            {recommendations.map((rec) => (
               <AIRecCard
                 key={rec.id}
                 rec={rec}
@@ -105,7 +108,7 @@ export function DashboardScreen() {
         {/* Özet paneller */}
         <Cols min={250}>
           <Card padded>
-            <SectionHeader title="Tıbbi Kapasite" subtitle="YBÜ doluluk özeti" right={<PFBadge id="PF-EMG01" />} />
+            <SectionHeader title="Tıbbi Kapasite" subtitle="YBÜ doluluk özeti" />
             {hospitalRows.slice(0, 5).map((h) => (
               <Row key={h.name} gap={7} style={{ marginBottom: 7 }}>
                 <View style={[s.dot, { backgroundColor: loadColor(h.load) }]} />
@@ -121,7 +124,7 @@ export function DashboardScreen() {
           </Card>
 
           <Card padded>
-            <SectionHeader title="Güvenli Düğüm Envanteri" subtitle="Stok · kalan gün" right={<PFBadge id="PF-GET08" />} />
+            <SectionHeader title="Güvenli Düğüm Envanteri" subtitle="Stok · kalan gün" />
             {GIS_SAFE_NODES.map((n) => {
               const cc = n.days <= 3 ? C.danger : n.days <= 7 ? C.warning : C.gis;
               return (
@@ -140,7 +143,7 @@ export function DashboardScreen() {
           </Card>
 
           <Card padded>
-            <SectionHeader title="Kaynak Hazırlık" subtitle="Stok / talep" right={<PFBadge id="PF-GET08" />} />
+            <SectionHeader title="Kaynak Hazırlık" subtitle="Stok / talep" />
             {resourceItems.map((r) => {
               const col = r.pct < 72 ? C.danger : r.pct < 80 ? C.warning : C.success;
               return (
@@ -184,7 +187,6 @@ export function DashboardScreen() {
                 <Txt size={11} weight="600" color={C.txt}>
                   Uluslararası Yardım
                 </Txt>
-                <PFBadge id="PF-AI05" color={C.gis} />
               </Row>
               {[
                 ["🇩🇪 Almanya", "Yolda · 4s"],
@@ -207,7 +209,6 @@ export function DashboardScreen() {
                 <Txt size={11} weight="600" color={C.txt}>
                   Son Sismik Olaylar
                 </Txt>
-                <PFBadge id="PF-DAT03" color={C.warning} />
               </Row>
               {[
                 { t: "06:17", r: "Kahramanmaraş", m: "Mw 7.2", sev: C.danger },
@@ -235,16 +236,20 @@ export function DashboardScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   banner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    backgroundColor: C.critical,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: C.card,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    borderLeftWidth: 4,
+    borderLeftColor: C.critical,
   },
   aiIcon: { width: 21, height: 21, borderRadius: 6, alignItems: "center", justifyContent: "center" },
   pendingChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-});
+}));

@@ -1,29 +1,54 @@
-import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import React, { useState } from "react";
+import { View, Pressable, StyleSheet, TextInput } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, RADIUS } from "../theme/tokens";
-import { Txt, Row, StatusBadge, PFBadge, Divider } from "./ui";
-import type { AIRecommendation } from "../data/mock";
+import { C, alpha, FONT, RADIUS, themed } from "../theme/tokens";
+import { Txt, Row, StatusBadge, Tag, Divider, Btn, Notice } from "./ui";
+import type { Recommendation } from "../api/types";
+import { errorMessage } from "../api/client";
+import { can } from "../auth/roles";
+import { useApp } from "../state/AppState";
 
 /**
  * YZ karar destek kartı.
  *
- * SRS gereği kart üç şeyi aynı anda göstermek zorundadır:
- *  • CON-007 / SEC-008 — öneri tavsiye niteliğindedir; konsol salt-okunurdur,
- *    onay/ret kararı sistem dışında yetkili personelce verilir.
- *  • CON-008 / QLT-006 — öneriyi üreten girdi verisi ve ürün fonksiyonları
- *    (kanıt kaynakları + PF rozetleri) izlenebilir olmalıdır.
- *  • Model sürümü ve güven skoru her çıktıda belirtilmelidir.
+ * Kart her öneriyi gerekçesi, güven skoru, model sürümü ve onu üreten girdi
+ * verileriyle birlikte gösterir. Öneri tavsiye niteliğindedir: yetkili karar
+ * verici onaylamadan hiçbir operasyonel eylem başlamaz. Karar verici öneriyi
+ * onaylayabilir, gerekçe yazarak reddedebilir ya da güncel veriyle yeniden
+ * hesaplatabilir; her karar sunucu tarafında denetim kaydına yazılır.
  */
 export function AIRecCard({
   rec,
   expanded,
   onToggle,
 }: {
-  rec: AIRecommendation;
+  rec: Recommendation;
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { role, decide, recompute } = useApp();
+  const canDecide = can(role, "recommendations.decide");
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      setRejecting(false);
+      setReason("");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pending = rec.status === "pending";
+
   return (
     <View style={[s.card, expanded && { borderColor: alpha(C.ai, 0.45) }]}>
       <Pressable onPress={onToggle} style={s.head}>
@@ -41,6 +66,7 @@ export function AIRecCard({
                 %{rec.conf} güven
               </Txt>
             </View>
+            {!pending && <StatusBadge status={rec.status} />}
           </Row>
           <Txt size={11} color={C.muted} style={{ marginTop: 3 }}>
             {rec.impact}
@@ -76,11 +102,11 @@ export function AIRecCard({
 
           <View style={{ marginTop: 10 }}>
             <Txt size={9} weight="700" color={C.muted} upper>
-              Girdi Fonksiyonları (CON-008 izlenebilirlik)
+              Girdi Verileri
             </Txt>
             <Row gap={4} wrap style={{ marginTop: 5 }}>
-              {rec.sourceFunctions.map((f) => (
-                <PFBadge key={f} id={f} color={C.gis} />
+              {rec.inputs.map((f) => (
+                <Tag key={f} label={f} color={C.gis} />
               ))}
             </Row>
           </View>
@@ -96,15 +122,95 @@ export function AIRecCard({
 
           <Divider style={{ marginVertical: 11 }} />
 
-          {/* Salt-okunur konsol: karar burada verilmez, yalnızca gerekçesiyle
-              birlikte gösterilir (CON-007 / SEC-008). */}
-          <View style={s.advisory}>
-            <Feather name="info" size={13} color={C.warning} />
-            <Txt size={10.5} color={C.warning} style={{ flex: 1 }}>
-              Tavsiye niteliğindedir. Bu konsol yalnızca bilgi sunar; onay veya ret kararı
-              yetkili personel tarafından sistem dışında verilir (CON-007 / SEC-008).
-            </Txt>
-          </View>
+          {rec.decision && (
+            <Notice
+              tone={rec.decision.status === "approved" ? "success" : "error"}
+              text={
+                rec.decision.status === "approved"
+                  ? `${rec.decision.by} tarafından ${rec.decision.at} saatinde onaylandı.`
+                  : `${rec.decision.by} tarafından ${rec.decision.at} saatinde reddedildi.${
+                      rec.decision.reason ? ` Gerekçe: ${rec.decision.reason}` : ""
+                    }`
+              }
+              style={{ marginBottom: 10 }}
+            />
+          )}
+
+          {rec.status === "recomputing" && (
+            <Notice tone="info" text="Öneri güncel veriyle yeniden hesaplanıyor…" style={{ marginBottom: 10 }} />
+          )}
+
+          {pending && canDecide && !rejecting && (
+            <Row gap={6} wrap>
+              <Btn
+                label="Onayla"
+                icon="check"
+                small
+                disabled={busy}
+                onPress={() => run(() => decide(rec.id, "approved"))}
+                style={{ flexGrow: 1 }}
+              />
+              <Btn
+                label="Reddet"
+                icon="x"
+                small
+                variant="outline"
+                color={C.danger}
+                disabled={busy}
+                onPress={() => setRejecting(true)}
+                style={{ flexGrow: 1 }}
+              />
+              <Btn
+                label="Yeniden Hesapla"
+                icon="refresh-cw"
+                small
+                variant="outline"
+                color={C.ai}
+                disabled={busy}
+                onPress={() => run(() => recompute(rec.id))}
+                style={{ flexGrow: 1 }}
+              />
+            </Row>
+          )}
+
+          {pending && canDecide && rejecting && (
+            <View>
+              <Txt size={10.5} weight="600" color={C.txt2} style={{ marginBottom: 6 }}>
+                Ret gerekçesi
+              </Txt>
+              <TextInput
+                value={reason}
+                onChangeText={setReason}
+                placeholder="Kararınızın nedenini yazın (denetim kaydına işlenir)"
+                placeholderTextColor={C.muted}
+                multiline
+                style={s.input}
+              />
+              <Row gap={6} style={{ marginTop: 8 }}>
+                <Btn
+                  label="Reddi Kaydet"
+                  icon="x"
+                  small
+                  color={C.danger}
+                  disabled={busy || !reason.trim()}
+                  onPress={() => run(() => decide(rec.id, "rejected", reason))}
+                  style={{ flex: 1 }}
+                />
+                <Btn label="Vazgeç" small variant="ghost" color={C.muted} onPress={() => setRejecting(false)} style={{ flex: 1 }} />
+              </Row>
+            </View>
+          )}
+
+          {pending && !canDecide && (
+            <View style={s.advisory}>
+              <Feather name="info" size={13} color={C.txt2} />
+              <Txt size={11} color={C.txt2} style={{ flex: 1 }}>
+                Tavsiye niteliğindedir. Onay veya ret kararını Sistem Yöneticisi & Karar Verici rolü verir.
+              </Txt>
+            </View>
+          )}
+
+          {!!error && <Notice tone="error" text={error} style={{ marginTop: 8 }} />}
 
           <Txt size={9} color={C.muted} style={{ marginTop: 9 }}>
             Model: {rec.model} · Alan: {rec.area}
@@ -115,7 +221,7 @@ export function AIRecCard({
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   card: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -134,7 +240,20 @@ const s = StyleSheet.create({
     padding: 10,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    backgroundColor: alpha(C.warning, 0.1),
-    borderColor: alpha(C.warning, 0.3),
+    backgroundColor: C.cardEl,
+    borderColor: C.border,
   },
-});
+  input: {
+    backgroundColor: C.cardEl,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: C.txt,
+    fontSize: 12,
+    fontFamily: FONT,
+    minHeight: 54,
+    textAlignVertical: "top",
+  },
+}));

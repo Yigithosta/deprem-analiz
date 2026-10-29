@@ -3,8 +3,9 @@ import { View, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
-import { C } from "./src/theme/tokens";
+import { C, themed } from "./src/theme/tokens";
 import { AppProvider, useApp } from "./src/state/AppState";
+import { ThemeProvider, useTheme } from "./src/theme/ThemeProvider";
 import { Shell } from "./src/navigation/Shell";
 import type { ScreenId } from "./src/navigation/registry";
 
@@ -29,7 +30,6 @@ import {
   NotificationsScreen,
   ReportingScreen,
   AuditScreen,
-  TraceabilityScreen,
   UsersScreen,
   VaultScreen,
   SettingsScreen,
@@ -38,12 +38,10 @@ import {
 /**
  * MEDAIGENCY — Lot C operasyon konsolu (React Native / Expo).
  *
- * Yapı, "AI-Driven Disaster Resilience, Medical Response, and Multi-Purpose
- * Resource Logistics Management System" SRS V1.0 dokümanına göre düzenlenmiştir:
- *  • Menü grupları SRS §3.1.1'deki rol tabanlı yerleşimle aynıdır.
- *  • Her ekran gerçeklediği ürün fonksiyonlarını (PF) rozetlerle gösterir (CON-008).
- *  • Erişim, SRS §2.3'teki aktör–fonksiyon eşleşmesine göre kısıtlanır (SEC-009).
- *  • Tüm YZ çıktıları tavsiye niteliğindedir ve insan onayı gerektirir (CON-007).
+ *  • Menü grupları rol tabanlı konsol yerleşimini izler.
+ *  • Erişim, her kurumun rolüne tanımlı izinlerle sınırlıdır (en az yetki).
+ *  • Tüm veri ve işlemler API katmanından geçer (src/api).
+ *  • YZ çıktıları tavsiye niteliğindedir ve yetkili onayı gerektirir.
  */
 
 const SCREENS: Record<ScreenId, React.ComponentType> = {
@@ -62,7 +60,6 @@ const SCREENS: Record<ScreenId, React.ComponentType> = {
   international: InternationalScreen,
   reporting: ReportingScreen,
   audit: AuditScreen,
-  traceability: TraceabilityScreen,
   users: UsersScreen,
   vault: VaultScreen,
   settings: SettingsScreen,
@@ -70,27 +67,30 @@ const SCREENS: Record<ScreenId, React.ComponentType> = {
 
 function Root() {
   const { role } = useApp();
+  const { version } = useTheme();
   const [screen, setScreen] = useState<ScreenId>("dashboard");
 
-  // SEC-009 — rol değiştiğinde, önceki rolün açtığı ekranda kalınmaz.
+  // Rol değiştiğinde önceki rolün açtığı ekranda kalınmaz.
   useEffect(() => {
     setScreen("dashboard");
   }, [role?.id]);
 
-  if (!role) return <LoginScreen />;
+  // Tema değiştiğinde görsel ağaç yeniden çizilir; oturum ve açık ekran korunur.
+  if (!role) return <LoginScreen key={version} />;
 
   const Current = SCREENS[screen];
   return (
-    <Shell screen={screen} onNavigate={setScreen}>
+    <Shell key={version} screen={screen} onNavigate={setScreen}>
       <Current />
     </Shell>
   );
 }
 
-export default function App() {
+function Frame() {
+  const { mode } = useTheme();
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
         <View style={s.root}>
           <AppProvider>
@@ -102,7 +102,15 @@ export default function App() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.sidebar },
+export default function App() {
+  return (
+    <ThemeProvider>
+      <Frame />
+    </ThemeProvider>
+  );
+}
+
+const s = themed(() => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.card },
   root: { flex: 1, backgroundColor: C.bg },
-});
+}));

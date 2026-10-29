@@ -11,7 +11,7 @@ import {
   StyleProp,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, FONT, MONO, RADIUS } from "../theme/tokens";
+import { C, alpha, FONT, MONO, RADIUS, themed } from "../theme/tokens";
 
 /* ─────────────────────────── Tipografi ─────────────────────────── */
 
@@ -82,11 +82,11 @@ export function SectionHeader({
   return (
     <View style={s.sectionHeader}>
       <View style={{ flex: 1, paddingRight: 8 }}>
-        <Txt size={14} weight="600" color={C.txt}>
+        <Txt size={13} weight="600" color={C.txt}>
           {title}
         </Txt>
         {!!subtitle && (
-          <Txt size={11} color={C.muted} style={{ marginTop: 2 }}>
+          <Txt size={11.5} color={C.muted} style={{ marginTop: 3, lineHeight: 16 }}>
             {subtitle}
           </Txt>
         )}
@@ -99,25 +99,34 @@ export function SectionHeader({
 /* ─────────────────────── Durum rozeti ─────────────────────── */
 
 const BADGE_COLORS: Record<string, string> = {
-  critical: C.danger,
-  high: "#FB923C",
-  medium: C.warning,
-  low: C.success,
-  online: C.success,
-  ready: C.success,
-  degraded: C.warning,
-  stale: C.warning,
-  idle: C.muted,
-  offline: C.danger,
-  impassable: C.critical,
-  restricted: C.warning,
-  passable: C.success,
-  approval: C.blue,
-  change: C.ai,
-  update: C.gis,
-  system: C.muted,
-  auth: "#34D399",
-  export: "#818CF8",
+  get critical() { return C.critical; },
+  get high() { return C.danger; },
+  get medium() { return C.warning; },
+  get low() { return C.muted; },
+  get online() { return C.success; },
+  get ready() { return C.success; },
+  get degraded() { return C.warning; },
+  get stale() { return C.warning; },
+  get idle() { return C.muted; },
+  get offline() { return C.danger; },
+  get impassable() { return C.critical; },
+  get restricted() { return C.warning; },
+  get passable() { return C.success; },
+  get approval() { return C.success; },
+  get change() { return C.txt2; },
+  get update() { return C.txt2; },
+  get system() { return C.muted; },
+  get auth() { return C.txt2; },
+  get export() { return C.txt2; },
+  get rejection() { return C.danger; },
+  get pending() { return C.warning; },
+  get approved() { return C.success; },
+  get rejected() { return C.danger; },
+  get recomputing() { return C.txt2; },
+  get queued() { return C.muted; },
+  get running() { return C.txt; },
+  get done() { return C.success; },
+  get failed() { return C.danger; },
 };
 
 const BADGE_LABEL: Record<string, string> = {
@@ -140,50 +149,37 @@ const BADGE_LABEL: Record<string, string> = {
   system: "SİSTEM",
   auth: "KİMLİK",
   export: "DIŞA AKTARIM",
+  rejection: "RET",
+  pending: "KARAR BEKLİYOR",
+  approved: "ONAYLANDI",
+  rejected: "REDDEDİLDİ",
+  recomputing: "YENİDEN HESAPLANIYOR",
+  queued: "SIRADA",
+  running: "ÇALIŞIYOR",
+  done: "TAMAMLANDI",
+  failed: "HATA",
 };
 
+/** Durum rozeti — renkli nokta + metin; anlam renge değil metne dayanır. */
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const col = BADGE_COLORS[status] ?? C.muted;
   return (
-    <View
-      style={[
-        s.badge,
-        { backgroundColor: alpha(col, 0.15), borderColor: alpha(col, 0.35) },
-      ]}
-    >
-      <Txt size={9} weight="700" color={col} upper>
+    <View style={s.badge}>
+      <View style={[s.badgeDot, { backgroundColor: col }]} />
+      <Txt size={9.5} weight="600" color={col === C.muted ? C.muted : C.txt2} upper>
         {label ?? BADGE_LABEL[status] ?? status}
       </Txt>
     </View>
   );
 }
 
-/**
- * İzlenebilirlik rozeti — CON-008 / QLT-006.
- * Her ekran ve YZ çıktısı, gerçeklediği SRS ürün fonksiyonunu görünür kılar.
- */
-export function PFBadge({ id, color = C.blue }: { id: string; color?: string }) {
+/** Kaynak / girdi etiketi — bir çıktının hangi veriden geldiğini gösterir. */
+export function Tag({ label }: { label: string; color?: string }) {
   return (
-    <View
-      style={[
-        s.pfBadge,
-        { backgroundColor: alpha(color, 0.14), borderColor: alpha(color, 0.4) },
-      ]}
-    >
-      <Txt size={9} weight="700" color={color} mono>
-        {id}
+    <View style={s.tag}>
+      <Txt size={10} weight="500" color={C.txt2}>
+        {label}
       </Txt>
-    </View>
-  );
-}
-
-export function PFBadgeRow({ ids, color }: { ids: string[]; color?: string }) {
-  if (!ids.length) return null;
-  return (
-    <View style={s.pfRow}>
-      {ids.map((id) => (
-        <PFBadge key={id} id={id} color={color} />
-      ))}
     </View>
   );
 }
@@ -211,14 +207,12 @@ export function KPICard({
     // maxWidth, son satırda tek kalan kartın tüm genişliğe yayılmasını önler.
     <View style={[s.card, s.kpi, { minWidth, maxWidth: minWidth * 2, flexGrow: 1, flexBasis: minWidth }]}>
       <View style={s.rowBetween}>
-        <Txt size={9} weight="600" color={C.muted} upper style={{ flex: 1 }} numberOfLines={2}>
+        <Txt size={10} weight="600" color={C.muted} upper style={{ flex: 1 }} numberOfLines={2}>
           {label}
         </Txt>
-        <View style={[s.kpiIcon, { backgroundColor: alpha(color, 0.14) }]}>
-          <Feather name={icon} size={13} color={color} />
-        </View>
+        <Feather name={icon} size={14} color={C.muted} />
       </View>
-      <Txt size={22} weight="700" color={C.txt} mono style={{ marginTop: 6 }}>
+      <Txt size={24} weight="600" color={C.txt} style={{ marginTop: 8, letterSpacing: -0.5 }}>
         {value}
       </Txt>
       <View style={[s.row, { marginTop: 4, gap: 6 }]}>
@@ -229,7 +223,7 @@ export function KPICard({
               size={11}
               color={trend >= 0 ? C.danger : C.success}
             />
-            <Txt size={11} weight="600" color={trend >= 0 ? C.danger : C.success}>
+            <Txt size={11} weight="600" color={trend >= 0 ? C.danger : C.success} mono>
               {Math.abs(trend)}%
             </Txt>
           </View>
@@ -249,7 +243,7 @@ export function KPICard({
 export function Bar({
   pct,
   color,
-  height = 6,
+  height = 4,
   track = C.border,
   style,
 }: {
@@ -294,8 +288,12 @@ export function Btn({
   small?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const base = color ?? C.blue;
   const isPrimary = variant === "primary";
+  // Ana düğme siyah; ikincil düğmeler nötr çerçeveli. Yalnızca yıkıcı/onay
+  // işlemleri anlamlı durum rengini korur.
+  const semantic = color === C.danger || color === C.critical || color === C.success;
+  const base = semantic ? color! : C.txt;
+  const onFill = semantic ? C.onSemantic : C.onPrimary;
   return (
     <Pressable
       onPress={onPress}
@@ -305,13 +303,13 @@ export function Btn({
         small && { paddingVertical: 6, paddingHorizontal: 10 },
         isPrimary
           ? { backgroundColor: base }
-          : { borderWidth: 1, borderColor: variant === "outline" ? alpha(base, 0.5) : C.border },
+          : { borderWidth: 1, borderColor: variant === "outline" ? (semantic ? alpha(base, 0.5) : C.borderStrong) : C.border, backgroundColor: C.card },
         (disabled || pressed) && { opacity: disabled ? 0.5 : 0.75 },
         style,
       ]}
     >
-      {!!icon && <Feather name={icon} size={small ? 11 : 13} color={isPrimary ? "#fff" : base} />}
-      <Txt size={small ? 11 : 12} weight="700" color={isPrimary ? "#fff" : base}>
+      {!!icon && <Feather name={icon} size={small ? 12 : 14} color={isPrimary ? onFill : base} />}
+      <Txt size={small ? 11.5 : 12.5} weight="600" color={isPrimary ? onFill : base}>
         {label}
       </Txt>
     </Pressable>
@@ -324,9 +322,9 @@ export function Toggle({ value, onChange }: { value: boolean; onChange: (v: bool
   return (
     <Pressable
       onPress={() => onChange(!value)}
-      style={[s.toggle, { backgroundColor: value ? C.blue : C.border }]}
+      style={[s.toggle, { backgroundColor: value ? C.txt : C.borderStrong }]}
     >
-      <View style={[s.toggleKnob, { left: value ? 22 : 2 }]} />
+      <View style={[s.toggleKnob, { left: value ? 22 : 2, backgroundColor: value ? C.onPrimary : "#fff" }]} />
     </Pressable>
   );
 }
@@ -344,6 +342,7 @@ export function Checkbox({
   label: string;
   color?: string;
 }) {
+  color = C.txt;
   return (
     <Pressable onPress={() => onChange(!checked)} style={s.checkRow}>
       <View
@@ -352,7 +351,7 @@ export function Checkbox({
           { borderColor: color, backgroundColor: checked ? color : "transparent" },
         ]}
       >
-        {checked && <Feather name="check" size={9} color="#fff" />}
+        {checked && <Feather name="check" size={9} color={C.onPrimary} />}
       </View>
       <Txt size={11} color={checked ? C.txt : C.muted} style={{ flex: 1 }}>
         {label}
@@ -533,38 +532,28 @@ export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
   return <View style={[{ height: 1, backgroundColor: C.border }, style]} />;
 }
 
-/** Ekran başlığı + SRS izlenebilirlik şeridi. */
+/** Ekran başlığı. */
 export function ScreenHeader({
   title,
   subtitle,
-  pfs,
   note,
 }: {
   title: string;
   subtitle?: string;
-  pfs: string[];
   note?: string;
 }) {
   return (
-    <View style={{ marginBottom: 14 }}>
-      <Txt size={17} weight="700" color={C.txt}>
+    <View style={s.screenHeader}>
+      <Txt size={20} weight="600" color={C.txt} style={{ letterSpacing: -0.3 }}>
         {title}
       </Txt>
       {!!subtitle && (
-        <Txt size={12} color={C.muted} style={{ marginTop: 3 }}>
+        <Txt size={12.5} color={C.txt2} style={{ marginTop: 4, lineHeight: 18 }}>
           {subtitle}
         </Txt>
       )}
-      <View style={[s.pfRow, { marginTop: 8 }]}>
-        <Txt size={9} weight="700" color={C.muted} upper>
-          SRS
-        </Txt>
-        {pfs.map((id) => (
-          <PFBadge key={id} id={id} />
-        ))}
-      </View>
       {!!note && (
-        <Txt size={10} color={C.muted} style={{ marginTop: 6, fontStyle: "italic" }}>
+        <Txt size={11} color={C.muted} style={{ marginTop: 6, lineHeight: 16 }}>
           {note}
         </Txt>
       )}
@@ -572,14 +561,35 @@ export function ScreenHeader({
   );
 }
 
-/** SEC-008 / CON-007 uyarı şeridi — YZ çıktılarının tavsiye niteliğini bildirir. */
+/** YZ çıktılarının tavsiye niteliğinde olduğunu bildiren uyarı şeridi. */
 export function AdvisoryNotice({ compact = false }: { compact?: boolean }) {
   return (
     <View style={[s.advisory, compact && { paddingVertical: 6 }]}>
-      <Feather name="alert-triangle" size={12} color={C.warning} />
-      <Txt size={10} color={C.warning} weight="600" style={{ flex: 1 }}>
-        SEC-008 / CON-007 — YZ çıktıları yalnızca tavsiye niteliğindedir. Operasyonel eylem öncesi insan onayı
-        zorunludur.
+      <Feather name="info" size={13} color={C.txt2} />
+      <Txt size={11} color={C.txt2} weight="500" style={{ flex: 1 }}>
+        YZ çıktıları yalnızca tavsiye niteliğindedir. Operasyonel eylem öncesi yetkili onayı zorunludur.
+      </Txt>
+    </View>
+  );
+}
+
+/** Kısa bilgi, başarı veya hata mesajı. */
+export function Notice({
+  tone = "info",
+  text,
+  style,
+}: {
+  tone?: "info" | "success" | "error" | "warning";
+  text: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const col = tone === "success" ? C.success : tone === "error" ? C.danger : tone === "warning" ? C.warning : C.info;
+  const icon = tone === "success" ? "check-circle" : tone === "error" ? "alert-octagon" : tone === "warning" ? "alert-triangle" : "info";
+  return (
+    <View style={[s.notice, { borderLeftColor: tone === "info" ? C.txt2 : col }, style]}>
+      <Feather name={icon} size={13} color={tone === "info" ? C.txt2 : col} style={{ marginTop: 1 }} />
+      <Txt size={11} color={C.txt} style={{ flex: 1, lineHeight: 16 }}>
+        {text}
       </Txt>
     </View>
   );
@@ -598,33 +608,52 @@ export function EmptyState({ icon = "inbox", text }: { icon?: keyof typeof Feath
 
 /* ─────────────────────────── Stiller ─────────────────────────── */
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   card: {
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
     borderRadius: RADIUS.lg,
   },
-  kpi: { padding: 12 },
-  kpiIcon: { width: 26, height: 26, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  kpi: { padding: 14 },
   row: { flexDirection: "row", alignItems: "center", gap: 4 },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  sectionHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 },
+  sectionHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 },
+  screenHeader: { marginBottom: 6, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.border },
   badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
     alignSelf: "flex-start",
   },
-  pfBadge: {
-    paddingHorizontal: 5,
+  badgeDot: { width: 6, height: 6, borderRadius: 3 },
+  tag: {
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: RADIUS.sm,
+    backgroundColor: C.bg,
     borderWidth: 1,
+    borderColor: C.border,
     alignSelf: "flex-start",
   },
-  pfRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, alignItems: "center" },
+  notice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 3,
+    backgroundColor: C.cardEl,
+  },
   btn: {
     flexDirection: "row",
     alignItems: "center",
@@ -633,6 +662,7 @@ const s = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 14,
     borderRadius: RADIUS.md,
+    minHeight: 34,
   },
   toggle: { width: 40, height: 20, borderRadius: 10, justifyContent: "center" },
   toggleKnob: {
@@ -664,13 +694,13 @@ const s = StyleSheet.create({
   tableHead: {
     flexDirection: "row",
     backgroundColor: C.cardEl,
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 11,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
     alignItems: "center",
@@ -679,14 +709,16 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 9,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: RADIUS.md,
-    backgroundColor: alpha(C.warning, 0.1),
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: alpha(C.warning, 0.3),
+    borderColor: C.border,
+    borderLeftWidth: 3,
+    borderLeftColor: C.txt,
   },
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: 32, paddingHorizontal: 16 },
-});
+}));
 
 export const ui = s;

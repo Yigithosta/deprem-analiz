@@ -1,192 +1,232 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
-import type { Role } from "../auth/roles";
-import {
-  auditLog as seedAudit,
-  notifications as seedNotifications,
-  roadDamageEntries as seedRoadDamage,
-  models,
-} from "../data/mock";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ROLE_BY_ID, type Role } from "../auth/roles";
+import { api, onSessionChange } from "../api/client";
+import { JOB_POLL_MS, NOTIFICATION_POLL_MS } from "../api/config";
+import type {
+  ModelId,
+  ModelJob,
+  NewRoadDamage,
+  Notification,
+  Recommendation,
+  RoadDamage,
+  Session,
+} from "../api/types";
 
 /**
- * Uygulama oturum ve karar durumu.
+ * Uygulama oturum ve operasyon durumu.
  *
- * Bu katman SRS'in üç bağlayıcı davranışını gerçekler:
- *  • CON-007 / SEC-008 — konsol salt-okunurdur; YZ önerileri yalnızca
- *    gösterilir, onay/ret kararı sistem dışında verilir.
- *  • CON-004 / SEC-006 — kimlik doğrulama, veri değişikliği ve operasyonel
- *    kararlar denetim kaydına yazılır.
- *  • CON-008 / QLT-006 — her kayıt, ilgili ürün fonksiyonunu (PF) taşır.
+ * Tüm okuma ve yazma işlemleri API katmanından geçer; denetim kaydı sunucu
+ * tarafında tutulur, istemci yalnızca sonucu gösterir. YZ önerileri tavsiye
+ * niteliğindedir ve ancak yetkili karar vericinin onayıyla uygulamaya geçer.
  */
 
-
-export type AuditEntry = {
-  time: string;
-  user: string;
-  role: string;
-  action: string;
-  detail: string;
-  type: string;
-  pf: string;
-};
-
-export type RoadDamage = {
-  id: string;
-  segment: string;
-  type: string;
-  severity: string;
-  entered: string;
-  note: string;
-  consumedBy: string;
-};
-
-export type ModelRun = {
-  status: "idle" | "running" | "done";
-  progress: number;
-  finishedAt?: string;
-};
+export type Credentials = { email: string; password: string; otp: string };
 
 type Ctx = {
+  session: Session | null;
   role: Role | null;
-  login: (role: Role) => void;
-  logout: () => void;
+  login: (role: Role, creds: Credentials) => Promise<void>;
+  logout: () => Promise<void>;
 
-  audit: AuditEntry[];
-  log: (action: string, detail: string, type: string, pf: string) => void;
-
-  notifications: typeof seedNotifications;
+  notifications: Notification[];
   markRead: (id: number) => void;
   markAllRead: () => void;
   unreadCount: number;
 
-  roadDamage: RoadDamage[];
-  addRoadDamage: (e: Omit<RoadDamage, "id" | "entered" | "consumedBy">) => void;
+  recommendations: Recommendation[];
+  decide: (id: number, decision: "approved" | "rejected", reason?: string) => Promise<void>;
+  recompute: (id: number) => Promise<void>;
 
-  runs: Record<string, ModelRun>;
-  triggerModel: (pf: string) => void;
+  roadDamage: RoadDamage[];
+  addRoadDamage: (e: NewRoadDamage) => Promise<RoadDamage>;
+
+  jobs: Partial<Record<ModelId, ModelJob>>;
+  triggerModel: (model: ModelId) => Promise<void>;
+  /** Girdisi değiştiği için yeniden çalıştırılması gereken modeller. */
+  stale: Partial<Record<ModelId, boolean>>;
+
+  /** Sunucudaki denetim kaydı değiştiğinde artar; denetim ekranı buna göre yenilenir. */
+  auditVersion: number;
+  bumpAudit: () => void;
 };
 
 const AppCtx = createContext<Ctx | null>(null);
 
-const now = () =>
-  new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<Role | null>(null);
-  const [audit, setAudit] = useState<AuditEntry[]>(seedAudit);
-  const [notifs, setNotifs] = useState(seedNotifications);
-  const [roadDamage, setRoadDamage] = useState<RoadDamage[]>(seedRoadDamage);
-  const [runs, setRuns] = useState<Record<string, ModelRun>>({});
+  const [session, setSession] = useState<Session | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [roadDamage, setRoadDamage] = useState<RoadDamage[]>([]);
+  const [jobs, setJobs] = useState<Partial<Record<ModelId, ModelJob>>>({});
+  const [stale, setStale] = useState<Partial<Record<ModelId, boolean>>>({});
+  const [auditVersion, setAuditVersion] = useState(0);
+  const bumpAudit = useCallback(() => setAuditVersion((v) => v + 1), []);
 
-  const log = useCallback(
-    (action: string, detail: string, type: string, pf: string) => {
-      setAudit((prev) => [
-        {
-          time: now(),
-          user: role?.demoUser.name ?? "Sistem",
-          role: role?.id ?? "—",
-          action,
-          detail,
-          type,
-          pf,
-        },
-        ...prev,
-      ]);
-    },
-    [role]
+  const role = session ? ROLE_BY_ID[session.actor] : null;
+
+  const reset = useCallback(() => {
+    setNotifications([]);
+    setRecommendations([]);
+    setRoadDamage([]);
+    setJobs({});
+    setStale({});
+  }, []);
+
+  // Oturum sunucu tarafında sonlanırsa (yenileme reddi, iptal) uygulama giriş ekranına döner.
+  useEffect(
+    () =>
+      onSessionChange((s) => {
+        setSession(s);
+        if (!s) reset();
+      }),
+    [reset]
   );
 
-  const login = useCallback((r: Role) => {
-    setRole(r);
-    setAudit((prev) => [
-      {
-        time: now(),
-        user: r.demoUser.name,
-        role: r.id,
-        action: "Giriş",
-        detail: `${r.name} rolüyle çok faktörlü doğrulamadan geçildi (${r.gateway})`,
-        type: "auth",
-        pf: "PF-SYS01",
-      },
-      ...prev,
-    ]);
+  const login = useCallback(async (r: Role, creds: Credentials) => {
+    await api.auth.login({ actor: r.id, ...creds });
   }, []);
 
-  const logout = useCallback(() => {
-    setRole(null);
-    setRuns({});
+  const logout = useCallback(async () => {
+    try {
+      await api.auth.logout();
+    } catch {
+      // Sunucuya ulaşılamasa da yerel oturum kapanır.
+    }
   }, []);
+
+  /* ── Oturum açıldığında ilk yükleme ── */
+  useEffect(() => {
+    if (!session) return;
+    api.notifications.list().then(setNotifications).catch(() => {});
+    api.recommendations.list().then(setRecommendations).catch(() => {});
+    api.roadDamage.list().then(setRoadDamage).catch(() => {});
+    bumpAudit();
+  }, [session?.actor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Bildirimler ── */
+  useEffect(() => {
+    if (!session) return;
+    const t = setInterval(() => {
+      api.notifications.list().then(setNotifications).catch(() => {});
+    }, NOTIFICATION_POLL_MS);
+    return () => clearInterval(t);
+  }, [session?.actor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markRead = useCallback((id: number) => {
-    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    api.notifications.markRead(id).catch(() => {});
   }, []);
 
   const markAllRead = useCallback(() => {
-    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    api.notifications.markAllRead().catch(() => {});
   }, []);
 
-  // PF-RSK01 — AFAD saha girişi; Yol Riski modeli (PF-AI03) tarafından tüketilir.
+  /* ── YZ önerileri ── */
+  const decide = useCallback(
+    async (id: number, decision: "approved" | "rejected", reason?: string) => {
+      const updated = await api.recommendations.decide(id, decision, reason);
+      setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      bumpAudit();
+    },
+    [bumpAudit]
+  );
+
+  const recompute = useCallback(
+    async (id: number) => {
+      const updated = await api.recommendations.recompute(id);
+      setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      bumpAudit();
+    },
+    [bumpAudit]
+  );
+
+  const anyRecomputing = recommendations.some((r) => r.status === "recomputing");
+  useEffect(() => {
+    if (!anyRecomputing) return;
+    const t = setInterval(() => {
+      api.recommendations.list().then(setRecommendations).catch(() => {});
+    }, 800);
+    return () => clearInterval(t);
+  }, [anyRecomputing]);
+
+  /* ── Saha yol hasarı ── */
   const addRoadDamage = useCallback(
-    (e: Omit<RoadDamage, "id" | "entered" | "consumedBy">) => {
-      const id = `RD-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-      setRoadDamage((prev) => [
-        { ...e, id, entered: `${role?.short ?? "AFAD"} · ${now().slice(0, 5)}`, consumedBy: "PF-AI03" },
-        ...prev,
-      ]);
-      log("Saha Verisi Girildi", `${id} — ${e.segment} (${e.type})`, "change", "PF-RSK01");
-      // Yol riski modeli yeni girdiyle bayat duruma düşer.
-      setRuns((prev) => ({ ...prev, "PF-AI03": { status: "idle", progress: 0 } }));
+    async (e: NewRoadDamage) => {
+      const entry = await api.roadDamage.create(e);
+      setRoadDamage((prev) => [entry, ...prev]);
+      // Yol riski modeli yeni girdiyle bayatlar; yeniden çalıştırılana kadar uyarı gösterilir.
+      setStale((prev) => ({ ...prev, roadRisk: true }));
+      bumpAudit();
+      return entry;
     },
-    [log, role]
+    [bumpAudit]
   );
 
-  // PF-AI01…06 — model tetikleme. Gerçekte Dağıtım Sistemi'ne gRPC/Redis Stream
-  // üzerinden iletilir (SRS §3.1.4); burada ilerleme simüle edilir.
+  /* ── Model işleri ── */
   const triggerModel = useCallback(
-    (pf: string) => {
-      const model = models.find((m) => m.pf === pf);
-      setRuns((prev) => ({ ...prev, [pf]: { status: "running", progress: 0 } }));
-      log("Model Çalıştırma Tetiklendi", `${model?.name ?? pf} — ${model?.engine ?? ""}`, "update", pf);
-
-      const timer = setInterval(() => {
-        setRuns((prev) => {
-          const cur = prev[pf];
-          if (!cur || cur.status !== "running") {
-            clearInterval(timer);
-            return prev;
-          }
-          const next = cur.progress + 8;
-          if (next >= 100) {
-            clearInterval(timer);
-            return { ...prev, [pf]: { status: "done", progress: 100, finishedAt: now() } };
-          }
-          return { ...prev, [pf]: { ...cur, progress: next } };
-        });
-      }, 140);
+    async (model: ModelId) => {
+      const job = await api.models.trigger(model);
+      setJobs((prev) => ({ ...prev, [model]: job }));
+      bumpAudit();
     },
-    [log]
+    [bumpAudit]
   );
 
-  const unreadCount = notifs.filter((n) => !n.read).length;
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
+  const activeJobs = Object.values(jobs).filter((j) => j && (j.status === "queued" || j.status === "running")).length;
+
+  useEffect(() => {
+    if (!activeJobs) return;
+    const t = setInterval(async () => {
+      const active = Object.values(jobsRef.current).filter(
+        (j): j is ModelJob => !!j && (j.status === "queued" || j.status === "running")
+      );
+      for (const j of active) {
+        try {
+          const next = await api.models.job(j.jobId);
+          setJobs((prev) => ({ ...prev, [next.model]: next }));
+          if (next.status === "done") {
+            setStale((prev) => ({ ...prev, [next.model]: false }));
+            bumpAudit();
+            api.notifications.list().then(setNotifications).catch(() => {});
+          }
+        } catch {
+          setJobs((prev) => ({ ...prev, [j.model]: { ...j, status: "failed", error: "Durum alınamadı." } }));
+        }
+      }
+    }, JOB_POLL_MS);
+    return () => clearInterval(t);
+  }, [activeJobs, bumpAudit]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const value = useMemo<Ctx>(
     () => ({
+      session,
       role,
       login,
       logout,
-      audit,
-      log,
-      notifications: notifs,
+      notifications,
       markRead,
       markAllRead,
       unreadCount,
+      recommendations,
+      decide,
+      recompute,
       roadDamage,
       addRoadDamage,
-      runs,
+      jobs,
       triggerModel,
+      stale,
+      auditVersion,
+      bumpAudit,
     }),
     [
-      role, login, logout, audit, log, notifs,
-      markRead, markAllRead, unreadCount, roadDamage, addRoadDamage, runs, triggerModel,
+      session, role, login, logout, notifications, markRead, markAllRead, unreadCount,
+      recommendations, decide, recompute, roadDamage, addRoadDamage, jobs, triggerModel,
+      stale, auditVersion, bumpAudit,
     ]
   );
 

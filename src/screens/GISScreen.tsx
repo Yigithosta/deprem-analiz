@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { View, ScrollView, StyleSheet, Pressable, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, RADIUS, riskColor } from "../theme/tokens";
-import { Txt, Row, Card, Checkbox, Bar, PFBadge } from "../components/ui";
+import { C, alpha, RADIUS, riskColor, themed } from "../theme/tokens";
+import { Txt, Row, Card, Checkbox, Bar } from "../components/ui";
 import {
   OperationalMap,
   DEFAULT_LAYERS,
@@ -14,9 +14,8 @@ import { MapLegend } from "../components/MapLegend";
 import { GIS_CORRIDORS, GIS_HOSPITALS, GIS_SAFE_NODES } from "../data/mock";
 
 /**
- * SRS §3.1.1 — GIS İstihbaratı.
- * CON-005 (geospatial görselleştirme), DSN-002 (OSM Servisi + PostGIS),
- * PF-GET03 (yol riski sonuçları harita üzerinde), PF-DAT06 (harita verisi).
+ * GIS İstihbaratı — OSM tabanlı harita üzerinde hastaneler, güvenli düğümler,
+ * koridorlar, yol riski ve deprem riski katmanları.
  *
  * Ekran iki soruya indirgenmiştir: **"neye bakıyorum?"** (görünüm) ve
  * **"ne kadarını görmek istiyorum?"** (önem eşiği). Tekil katman anahtarları
@@ -31,18 +30,18 @@ type LayerKey = keyof GISLayers;
 
 /** Gelişmiş bölümdeki tekil anahtarların etiketleri — günlük dilde. */
 const LAYER_META: Record<LayerKey, { label: string; color: string }> = {
-  hospitals: { label: "Hastaneler", color: C.critical },
-  safeNodes: { label: "Güvenli düğümler", color: C.gis },
-  warehouses: { label: "İkmal depoları", color: C.ai },
-  corridors: { label: "Lojistik koridorlar", color: C.success },
-  resourceFlow: { label: "Kaynak akışı", color: C.ai },
-  international: { label: "Uluslararası giriş noktaları", color: C.info },
-  aiOverlay: { label: "YZ tahmin bölgeleri", color: C.ai },
-  faults: { label: "Diri fay hatları", color: "#F87171" },
-  medicalDemand: { label: "Tıbbi talep", color: C.danger },
-  resourceDeficit: { label: "Kaynak açığı", color: C.ai },
-  population: { label: "Nüfus yoğunluğu", color: C.blue },
-  seismicRisk: { label: "Deprem risk modeli", color: "#EF4444" },
+  hospitals: { label: "Hastaneler", get color() { return C.critical; } },
+  safeNodes: { label: "Güvenli düğümler", get color() { return C.gis; } },
+  warehouses: { label: "İkmal depoları", get color() { return C.ai; } },
+  corridors: { label: "Lojistik koridorlar", get color() { return C.success; } },
+  resourceFlow: { label: "Kaynak akışı", get color() { return C.ai; } },
+  international: { label: "Uluslararası giriş noktaları", get color() { return C.info; } },
+  aiOverlay: { label: "YZ tahmin bölgeleri", get color() { return C.ai; } },
+  faults: { label: "Diri fay hatları", color: "#7F1D1D" },
+  medicalDemand: { label: "Tıbbi talep", get color() { return C.danger; } },
+  resourceDeficit: { label: "Kaynak açığı", get color() { return C.ai; } },
+  population: { label: "Nüfus yoğunluğu", get color() { return C.blue; } },
+  seismicRisk: { label: "Deprem risk modeli", get color() { return C.danger; } },
 };
 
 /** Gelişmiş bölümde tek tek açılabilen katmanlar (ısı haritaları hariç). */
@@ -113,8 +112,8 @@ const HEAT_OPTIONS: { key: HeatLayer | "none"; label: string }[] = [
 
 /** Önem eşiği — "hepsi" ile "sadece sorunlu" arasında iki uçlu sade seçim. */
 const SEVERITY: { label: string; hint: string; rank: number; color: string }[] = [
-  { label: "Hepsi", hint: "Tüm kayıtlar haritada", rank: 0, color: C.txt2 },
-  { label: "Sadece sorunlu", hint: "Yüksek ve kritik durumlar", rank: 1, color: C.warning },
+  { label: "Hepsi", hint: "Tüm kayıtlar haritada", rank: 0, get color() { return C.txt2; } },
+  { label: "Sadece sorunlu", hint: "Yüksek ve kritik durumlar", rank: 1, get color() { return C.warning; } },
 ];
 
 const hospitalRank = (risk: string) => (risk === "critical" ? 2 : risk === "high" ? 1 : 0);
@@ -280,11 +279,6 @@ export function GISScreen() {
             );
           })}
 
-          <Row gap={5} style={{ marginTop: 10, flexWrap: "wrap" }}>
-            <PFBadge id="PF-DAT06" />
-            <PFBadge id="PF-GET03" />
-            <PFBadge id="PF-AI02" />
-          </Row>
         </View>
       )}
     </ScrollView>
@@ -299,7 +293,7 @@ export function GISScreen() {
         {minRank === 0 ? "Haritadaki tüm kayıtlar" : "Yalnızca sorunlu kayıtlar"}
       </Txt>
 
-      <PanelSection title="Hastaneler" hint="yoğun bakım doluluğu" pf="PF-EMG01">
+      <PanelSection title="Hastaneler" hint="yoğun bakım doluluğu">
         {hospitals.length === 0 && <FilteredOut />}
         {hospitals.map((h) => {
           const rc = riskColor(h.risk);
@@ -324,7 +318,7 @@ export function GISScreen() {
         })}
       </PanelSection>
 
-      <PanelSection title="Güvenli düğümler" hint="stok kaç gün yeter" pf="PF-GET07">
+      <PanelSection title="Güvenli düğümler" hint="stok kaç gün yeter">
         {safeNodes.length === 0 && <FilteredOut />}
         {safeNodes.map((n) => {
           const cc = n.days <= 3 ? C.danger : n.days <= 7 ? C.warning : C.gis;
@@ -344,7 +338,7 @@ export function GISScreen() {
         })}
       </PanelSection>
 
-      <PanelSection title="Koridorlar" hint="hat kullanım oranı" pf="PF-GET03" last>
+      <PanelSection title="Koridorlar" hint="hat kullanım oranı" last>
         {corridors.length === 0 && <FilteredOut />}
         {corridors.map((c) => (
           <Row key={c.id} gap={7} style={{ marginBottom: 7 }}>
@@ -415,24 +409,19 @@ function FilteredOut() {
 function PanelSection({
   title,
   hint,
-  pf,
   children,
   last,
 }: {
   title: string;
   hint: string;
-  pf: string;
   children: React.ReactNode;
   last?: boolean;
 }) {
   return (
     <View style={[s.section, last && { borderBottomWidth: 0, marginBottom: 0 }]}>
-      <Row style={{ justifyContent: "space-between" }}>
-        <Txt size={10.5} weight="700" color={C.txt}>
-          {title}
-        </Txt>
-        <PFBadge id={pf} />
-      </Row>
+      <Txt size={10.5} weight="700" color={C.txt}>
+        {title}
+      </Txt>
       <Txt size={9} color={C.muted} style={{ marginBottom: 8 }}>
         {hint}
       </Txt>
@@ -441,7 +430,7 @@ function PanelSection({
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   // flexGrow/flexShrink sabitlenmezse panel, içeriğin doğal genişliğine yayılır.
   leftPanel: {
     width: 224,
@@ -500,4 +489,4 @@ const s = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3 },
   collapseHead: { flexDirection: "row", alignItems: "center", gap: 8, padding: 13 },
-});
+}));

@@ -1,3 +1,4 @@
+import { C, themed } from "../../theme/tokens";
 import React, { useCallback, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
@@ -60,6 +61,6 @@ export function MapFrame({
   );
 }
 
-const st = StyleSheet.create({
-  web: { flex: 1, backgroundColor: "#07101f" },
-});
+const st = themed(() => StyleSheet.create({
+  web: { flex: 1, backgroundColor: C.mapBg },
+}));

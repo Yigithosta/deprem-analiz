@@ -1,10 +1,12 @@
 /**
  * Demo veri kümesi.
- * Not: Gerçek dağıtımda bu veriler SRS §3.1.3'te tanımlı dış arayüzlerden
- * (AFAD, Kızılay, Sağlık Bakanlığı, 112, Kandilli) ve Dağıtım Sistemi'nin
- * model çıktılarından gelir. Prototipte statik olarak tutulmaktadır.
+ * Gerçek dağıtımda bu veriler dış kurum arayüzlerinden (AFAD, Kızılay, Sağlık
+ * Bakanlığı, 112, Kandilli) ve Dağıtım Sistemi'nin model çıktılarından gelir.
+ * Uygulama bunlara doğrudan değil, API katmanı üzerinden erişir; API adresi
+ * tanımlı değilken sahte sunucu (src/api/mockServer.ts) bu kümeyi kullanır.
  */
 import { C } from "../theme/tokens";
+import type { ModelId } from "../api/types";
 
 export const forecastData = [
   { day: "D+1", med: 85, resource: 72, corridor: 88 },
@@ -36,8 +38,8 @@ export type AIRecommendation = {
   evidence: string[];
   reasoning: string;
   model: string;
-  /** CON-008 / QLT-006 — öneriyi üreten girdi fonksiyonları. */
-  sourceFunctions: string[];
+  /** Öneriyi üreten girdi verileri — her öneri kaynağına kadar izlenebilir. */
+  inputs: string[];
 };
 
 export const aiRecs: AIRecommendation[] = [
@@ -56,7 +58,7 @@ export const aiRecs: AIRecommendation[] = [
     ],
     reasoning: "Mevcut yatış hızında YBÜ kapasitesi kritik eşiği 6–8 saat içinde aşacak.",
     model: "MedCapAI v3.1",
-    sourceFunctions: ["PF-EMG01", "PF-DAT04", "PF-AI04"],
+    inputs: ["Acil servis doluluğu (Sağlık Bakanlığı)", "Bina maruziyet verisi (AFAD)", "Yerel optimizasyon çıktısı"],
   },
   {
     id: 2,
@@ -69,7 +71,7 @@ export const aiRecs: AIRecommendation[] = [
     evidence: ["Yol yapısal izleme sensörleri", "Trafik akışı anomali tespiti", "Altyapı kırılganlık modeli"],
     reasoning: "Yol yük sensörleri %23 normal dışı değer gösteriyor.",
     model: "RouteRiskAI v2.2",
-    sourceFunctions: ["PF-AI03", "PF-GET03", "PF-RSK01"],
+    inputs: ["Yol riski modeli çıktısı", "Saha yol hasarı kayıtları (AFAD)"],
   },
   {
     id: 3,
@@ -82,7 +84,7 @@ export const aiRecs: AIRecommendation[] = [
     evidence: ["IoT su seviyesi sensörleri (%18 doluluk)", "Nüfus bazlı tüketim modeli", "İkmal rotası kontrol"],
     reasoning: "Mevcut tüketim hızıyla 11.4 saatte depo tamamen boşalacak.",
     model: "LogisticsAI v1.8",
-    sourceFunctions: ["PF-DAT02", "PF-GET08", "PF-AI04"],
+    inputs: ["Stok miktarları (AFAD · Kızılay)", "Yerel optimizasyon çıktısı"],
   },
 ];
 
@@ -97,8 +99,8 @@ export const resourceItems = [
 
 // ===== GIS OPERASYONEL VERİ =====
 /**
- * Konumlar WGS84 (EPSG:4326) enlem/boylam olarak tutulur — DSN-002 uyarınca
- * OSM tabanlı harita servisiyle ve PostGIS geometrileriyle aynı referans sistemi.
+ * Konumlar WGS84 (EPSG:4326) enlem/boylam olarak tutulur — OSM tabanlı harita
+ * servisiyle ve PostGIS geometrileriyle aynı referans sistemi.
  * Yer seçimleri 6 Şubat senaryosunun etkilediği Doğu Akdeniz illerini temsil eder.
  */
 export const GIS_HOSPITALS = [
@@ -134,35 +136,35 @@ export const GIS_PORTS = [
  * ara nokta güzergâhın gerçek D/O yol geometrisini kabaca izler.
  */
 export const GIS_CORRIDORS = [
-  { id: "C-01", label: "C-01 Ankara → Adana", coords: [[39.925, 32.866], [38.372, 34.032], [37.045, 35.345]], status: "operational", risk: 22, load: 68, color: C.success, international: false },
-  { id: "C-02", label: "C-02 Mersin → Hatay", coords: [[36.803, 34.634], [36.900, 35.500], [36.202, 36.161]], status: "risky", risk: 82, load: 91, color: C.danger, international: false },
-  { id: "C-03", label: "C-03 Adana → Gaziantep", coords: [[37.045, 35.345], [37.180, 36.320], [37.062, 37.379]], status: "constrained", risk: 45, load: 74, color: C.warning, international: false },
-  { id: "C-04", label: "C-04 Konya → Adana", coords: [[37.874, 32.493], [37.420, 33.980], [37.045, 35.345]], status: "operational", risk: 18, load: 45, color: C.success, international: false },
-  { id: "C-05", label: "C-05 İskenderun → Hatay", coords: [[36.583, 36.168], [36.400, 36.200], [36.202, 36.161]], status: "constrained", risk: 68, load: 88, color: C.warning, international: false },
-  { id: "INTL", label: "Akdeniz Yardım Koridoru", coords: [[37.507, 15.087], [34.400, 25.000], [36.786, 34.629]], status: "operational", risk: 10, load: 55, color: C.gis, international: true },
-  { id: "W2H1", label: "Adıyaman → Adana İkmal", coords: [[37.764, 38.278], [37.550, 36.800], [37.045, 35.345]], status: "operational", risk: 15, load: 72, color: C.ai, international: false },
+  { id: "C-01", label: "C-01 Ankara → Adana", coords: [[39.925, 32.866], [38.372, 34.032], [37.045, 35.345]], status: "operational", risk: 22, load: 68, get color() { return C.success; }, international: false },
+  { id: "C-02", label: "C-02 Mersin → Hatay", coords: [[36.803, 34.634], [36.900, 35.500], [36.202, 36.161]], status: "risky", risk: 82, load: 91, get color() { return C.danger; }, international: false },
+  { id: "C-03", label: "C-03 Adana → Gaziantep", coords: [[37.045, 35.345], [37.180, 36.320], [37.062, 37.379]], status: "constrained", risk: 45, load: 74, get color() { return C.warning; }, international: false },
+  { id: "C-04", label: "C-04 Konya → Adana", coords: [[37.874, 32.493], [37.420, 33.980], [37.045, 35.345]], status: "operational", risk: 18, load: 45, get color() { return C.success; }, international: false },
+  { id: "C-05", label: "C-05 İskenderun → Hatay", coords: [[36.583, 36.168], [36.400, 36.200], [36.202, 36.161]], status: "constrained", risk: 68, load: 88, get color() { return C.warning; }, international: false },
+  { id: "INTL", label: "Akdeniz Yardım Koridoru", coords: [[37.507, 15.087], [34.400, 25.000], [36.786, 34.629]], status: "operational", risk: 10, load: 55, get color() { return C.gis; }, international: true },
+  { id: "W2H1", label: "Adıyaman → Adana İkmal", coords: [[37.764, 38.278], [37.550, 36.800], [37.045, 35.345]], status: "operational", risk: 15, load: 72, get color() { return C.ai; }, international: false },
 ];
 
 /** Isı haritası odakları — yarıçaplar metre cinsindendir. */
 export const GIS_HEAT = {
   medicalDemand: [
-    { lat: 37.045, lng: 35.345, radius: 95000, color: C.critical, intensity: 0.42 },
-    { lat: 36.202, lng: 36.161, radius: 80000, color: C.danger, intensity: 0.38 },
-    { lat: 36.803, lng: 34.634, radius: 60000, color: C.warning, intensity: 0.26 },
+    { lat: 37.045, lng: 35.345, radius: 95000, get color() { return C.critical; }, intensity: 0.42 },
+    { lat: 36.202, lng: 36.161, radius: 80000, get color() { return C.danger; }, intensity: 0.38 },
+    { lat: 36.803, lng: 34.634, radius: 60000, get color() { return C.warning; }, intensity: 0.26 },
   ],
-  resourceDeficit: [{ lat: 36.700, lng: 36.100, radius: 130000, color: C.ai, intensity: 0.24 }],
+  resourceDeficit: [{ lat: 36.700, lng: 36.100, radius: 130000, get color() { return C.ai; }, intensity: 0.24 }],
   population: [
-    { lat: 41.008, lng: 28.978, radius: 120000, color: C.blue, intensity: 0.26 },
-    { lat: 39.925, lng: 32.866, radius: 90000, color: C.blue, intensity: 0.18 },
-    { lat: 38.423, lng: 27.143, radius: 75000, color: C.blue, intensity: 0.16 },
+    { lat: 41.008, lng: 28.978, radius: 120000, get color() { return C.blue; }, intensity: 0.26 },
+    { lat: 39.925, lng: 32.866, radius: 90000, get color() { return C.blue; }, intensity: 0.18 },
+    { lat: 38.423, lng: 27.143, radius: 75000, get color() { return C.blue; }, intensity: 0.16 },
   ],
 };
 
 /**
- * Deprem risk ısı haritası — PF-AI01 (Hazard Modeli) × PF-AI02 (Risk Modeli)
- * çıktısının gösterim katmanı. `pga` 475 yıllık dönüş periyodu için en büyük yer
- * ivmesini (g), `score` ise maruziyet (PF-DAT04) ve kırılganlıkla (PF-DAT05)
- * ağırlıklandırılmış 0–100 bileşik risk skorunu ifade eder. Renk `hazardColor`
+ * Deprem risk ısı haritası — tehlike modeli × risk modeli çıktısının gösterim
+ * katmanı. `pga` 475 yıllık dönüş periyodu için en büyük yer ivmesini (g),
+ * `score` ise bina maruziyeti ve kırılganlıkla ağırlıklandırılmış 0–100 bileşik
+ * risk skorunu ifade eder. Renk `hazardColor`
  * ile skordan türetilir; veri kümesinde renk tutulmaz.
  */
 export const GIS_SEISMIC_RISK = [
@@ -211,14 +213,14 @@ export const GIS_FAULTS = [
   },
 ];
 
-/** YZ tahmin katmanı — CON-007 gereği yalnız gösterim, karar insan onayına bağlı. */
+/** YZ tahmin katmanı — yalnız gösterim; karar insan onayına bağlıdır. */
 export const GIS_AI_ZONES = [
   {
     id: "AIZ-1",
     label: "YZ: YBÜ Aşım Riski",
     kind: "rect" as const,
     bounds: [[36.55, 34.95], [37.45, 37.05]],
-    color: C.ai,
+    get color() { return C.ai; },
   },
   {
     id: "AIZ-2",
@@ -227,7 +229,7 @@ export const GIS_AI_ZONES = [
     lat: 36.30,
     lng: 36.30,
     radius: 85000,
-    color: C.warning,
+    get color() { return C.warning; },
   },
 ];
 
@@ -243,7 +245,7 @@ export const MAP_FOCUS: { center: [number, number]; zoom: number } = {
   zoom: 7,
 };
 
-// ===== SAFE NODE ENVANTERİ (PF-GET07 / PF-GET08) =====
+// ===== GÜVENLİ DÜĞÜM ENVANTERİ =====
 export const safeNodeInventory = [
   { id: "SN-01", loc: "Adana – Sarıçam", water: 72, food: 68, medical: 85, tents: 60, days: 8, priority: "medium" },
   { id: "SN-03", loc: "Hatay – Kumlu", water: 28, food: 45, medical: 40, tents: 35, days: 3, priority: "critical" },
@@ -279,28 +281,30 @@ export const platformUsers = [
   { name: "Uzm. Asiye K.", email: "a.kaya@afad.gov.tr", role: "AFAD", title: "Veri Analisti", mfa: false, last: "Dün 17:22", status: "offline" },
 ];
 
-// ===== PF-DAT — VERİ TOPLAMA KAYNAK DURUMU =====
+// ===== VERİ TOPLAMA — KAYNAK DURUMU =====
 export const dataSources = [
-  { pf: "PF-DAT01", name: "Stok Noktası Konumları", provider: "AFAD · Kızılay", gateway: "Koordinasyon", records: "1.284 nokta", freq: "5 dk", lastSync: "12 sn önce", status: "online", latency: 210 },
-  { pf: "PF-DAT02", name: "Kaynak Miktarları", provider: "AFAD · Kızılay", gateway: "Koordinasyon", records: "18.940 kalem", freq: "5 dk", lastSync: "12 sn önce", status: "online", latency: 340 },
-  { pf: "PF-DAT03", name: "Gözlemevi Verisi (Kandilli)", provider: "Kandilli API", gateway: "Doğrudan API", records: "428 olay/24s", freq: "30 sn", lastSync: "8 sn önce", status: "online", latency: 120 },
-  { pf: "PF-DAT04", name: "Bina Maruziyet Verisi", provider: "AFAD", gateway: "Koordinasyon", records: "6.2M yapı", freq: "Günlük", lastSync: "4 sa önce", status: "online", latency: 1840 },
-  { pf: "PF-DAT05", name: "Bina Kırılganlık Verisi", provider: "AFAD", gateway: "Koordinasyon", records: "142 eğri seti", freq: "Haftalık", lastSync: "2 gün önce", status: "degraded", latency: 2600 },
-  { pf: "PF-DAT06", name: "OSM Harita / Yol Ağı", provider: "Admin (OSM Servisi)", gateway: "Backoffice", records: "PostGIS 4.8 GB", freq: "Manuel", lastSync: "18 sa önce", status: "online", latency: 0 },
-  { pf: "PF-EMG01", name: "Hastane Acil Servis Doluluğu", provider: "Sağlık Bakanlığı", gateway: "Acil Durum", records: "1.140 tesis", freq: "60 sn", lastSync: "22 sn önce", status: "online", latency: 480 },
-  { pf: "PF-EMG02", name: "Acil Olay / İhbar Noktaları", provider: "112", gateway: "Acil Durum", records: "3.812 aktif", freq: "Anlık", lastSync: "2 sn önce", status: "online", latency: 90 },
-  { pf: "PF-EMG03", name: "Ambulans Koordinatları", provider: "112", gateway: "Acil Durum", records: "642 araç", freq: "Anlık", lastSync: "1 sn önce", status: "online", latency: 60 },
+  { id: "stock-locations", name: "Stok Noktası Konumları", provider: "AFAD · Kızılay", gateway: "Koordinasyon", records: "1.284 nokta", freq: "5 dk", lastSync: "12 sn önce", status: "online", latency: 210 },
+  { id: "stock-quantities", name: "Kaynak Miktarları", provider: "AFAD · Kızılay", gateway: "Koordinasyon", records: "18.940 kalem", freq: "5 dk", lastSync: "12 sn önce", status: "online", latency: 340 },
+  { id: "observatory", name: "Gözlemevi Verisi (Kandilli)", provider: "Kandilli API", gateway: "Doğrudan API", records: "428 olay/24s", freq: "30 sn", lastSync: "8 sn önce", status: "online", latency: 120 },
+  { id: "exposure", name: "Bina Maruziyet Verisi", provider: "AFAD", gateway: "Koordinasyon", records: "6.2M yapı", freq: "Günlük", lastSync: "4 sa önce", status: "online", latency: 1840 },
+  { id: "fragility", name: "Bina Kırılganlık Verisi", provider: "AFAD", gateway: "Koordinasyon", records: "142 eğri seti", freq: "Haftalık", lastSync: "2 gün önce", status: "degraded", latency: 2600 },
+  { id: "osm", name: "OSM Harita / Yol Ağı", provider: "Admin (OSM Servisi)", gateway: "Backoffice", records: "PostGIS 4.8 GB", freq: "Manuel", lastSync: "18 sa önce", status: "online", latency: 0 },
+  { id: "hospital-occupancy", name: "Hastane Acil Servis Doluluğu", provider: "Sağlık Bakanlığı", gateway: "Acil Durum", records: "1.140 tesis", freq: "60 sn", lastSync: "22 sn önce", status: "online", latency: 480 },
+  { id: "incidents", name: "Acil Olay / İhbar Noktaları", provider: "112", gateway: "Acil Durum", records: "3.812 aktif", freq: "Anlık", lastSync: "2 sn önce", status: "online", latency: 90 },
+  { id: "ambulances", name: "Ambulans Koordinatları", provider: "112", gateway: "Acil Durum", records: "642 araç", freq: "Anlık", lastSync: "1 sn önce", status: "online", latency: 60 },
 ];
 
-// ===== PF-AI / PF-GET — MODEL ORKESTRASYONU =====
+// ===== YZ MODEL ORKESTRASYONU =====
 export type ModelDef = {
-  pf: string;
-  getPf: string[];
+  id: ModelId;
   name: string;
   engine: string;
   subsystem: string;
   actor: string;
+  /** Modeli besleyen veriler. */
   inputs: string[];
+  /** Model çalıştıktan sonra alınabilen sonuç kümesi; yoksa boş. */
+  results: string;
   desc: string;
   lastRun: string;
   duration: string;
@@ -310,92 +314,92 @@ export type ModelDef = {
 
 export const models: ModelDef[] = [
   {
-    pf: "PF-AI01",
-    getPf: ["PF-GET01"],
-    name: "Hazard Modeli",
+    id: "hazard",
+    name: "Tehlike (Hazard) Modeli",
     engine: "OpenQuake Hazard",
     subsystem: "Dağıtım Sistemi",
     actor: "AFAD",
-    inputs: ["PF-DAT03"],
+    inputs: ["Gözlemevi verisi (Kandilli)", "Sismotektonik kaynak modeli"],
+    results: "Sismik tehlike dağılımı",
     desc: "Gözlemevi ve sismotektonik girdilerle sismik tehlike dağılımı üretir.",
     lastRun: "Bugün 06:42",
     duration: "8 dk 12 sn",
     status: "ready",
-    color: C.warning,
+    get color() { return C.warning; },
   },
   {
-    pf: "PF-AI02",
-    getPf: ["PF-GET02"],
+    id: "risk",
     name: "Risk Modeli",
     engine: "OpenQuake Risk",
     subsystem: "Dağıtım Sistemi",
     actor: "AFAD",
-    inputs: ["PF-GET01", "PF-DAT04", "PF-DAT05"],
-    desc: "Hazard çıktısını maruziyet ve kırılganlıkla birleştirip bina hasarı ve kayıp tahmini üretir.",
+    inputs: ["Tehlike sonuçları", "Bina maruziyet verisi", "Bina kırılganlık verisi"],
+    results: "Bina hasarı ve kayıp tahmini",
+    desc: "Tehlike çıktısını maruziyet ve kırılganlıkla birleştirip bina hasarı ve kayıp tahmini üretir.",
     lastRun: "Bugün 07:05",
     duration: "14 dk 40 sn",
     status: "ready",
-    color: C.danger,
+    get color() { return C.danger; },
   },
   {
-    pf: "PF-AI03",
-    getPf: ["PF-GET03"],
+    id: "roadRisk",
     name: "Yol Riski Modeli",
     engine: "Road Risk Service",
     subsystem: "Dağıtım Sistemi",
     actor: "AFAD",
-    inputs: ["PF-GET02", "PF-DAT06", "PF-RSK01"],
+    inputs: ["Risk sonuçları", "OSM yol ağı", "Saha yol hasarı kayıtları"],
+    results: "Yol ve altyapı riski",
     desc: "Bina hasar tahmini, OSM yol verisi ve saha girdisinden yol/altyapı riskini türetir.",
     lastRun: "Bugün 07:31",
     duration: "3 dk 55 sn",
     status: "stale",
-    color: C.critical,
+    get color() { return C.critical; },
   },
   {
-    pf: "PF-AI04",
-    getPf: ["PF-GET07", "PF-GET08"],
+    id: "localOptimization",
     name: "Yerel Optimizasyon",
     engine: "RL Optimizasyon Servisi",
     subsystem: "Sistem Alt Sistemi",
     actor: "AFAD",
-    inputs: ["PF-DAT01", "PF-DAT02", "PF-GET03"],
+    inputs: ["Stok noktaları", "Stok miktarları", "Yol riski sonuçları"],
+    results: "Stok noktası ve miktar planı",
     desc: "Ülke içi kaynak tahsisi ve ön konuşlanmayı stok, talep ve risk çıktılarına göre optimize eder.",
     lastRun: "Bugün 08:00",
     duration: "6 dk 20 sn",
     status: "ready",
-    color: C.ai,
+    get color() { return C.ai; },
   },
   {
-    pf: "PF-AI05",
-    getPf: [],
-    name: "Küresel (Çok-Etmenli) Optimizasyon",
+    id: "globalOptimization",
+    name: "Uluslararası (Çok-Etmenli) Optimizasyon",
     engine: "Multi-Agent RL",
     subsystem: "Sistem Alt Sistemi",
     actor: "Admin",
-    inputs: ["PF-AI04", "DEP-007"],
+    inputs: ["Yerel optimizasyon çıktısı", "Uluslararası yardım verisi (AFAD üzerinden)"],
+    results: "",
     desc: "Sınır ötesi kaynak paylaşımı ve uluslararası yardım akışlarını koordine eder.",
     lastRun: "Dün 22:10",
     duration: "22 dk 05 sn",
     status: "idle",
-    color: C.gis,
+    get color() { return C.gis; },
   },
   {
-    pf: "PF-AI06",
-    getPf: [],
+    id: "emergency",
     name: "Acil Gerçek Zamanlı YZ",
     engine: "A* Koordinasyon YZ",
     subsystem: "Emergency Service",
     actor: "112",
-    inputs: ["PF-EMG01", "PF-EMG02", "PF-EMG03", "PF-GET03"],
+    inputs: ["Acil servis doluluğu", "Olay noktaları", "Ambulans konumları", "Yol riski sonuçları"],
+    results: "",
     desc: "Canlı olay, ambulans ve kapasite verisine tepki vererek sevk ve yönlendirmeyi destekler.",
     lastRun: "Sürekli",
     duration: "~1.8 sn/istek",
     status: "ready",
-    color: C.info,
+    get color() { return C.info; },
   },
 ];
 
-// ===== PF-EMG — SEVK & YÖNLENDİRME =====
+// ===== SEVK & YÖNLENDİRME =====
 export const incidents = [
   { id: "INC-4471", loc: "Hatay – Antakya, Cumhuriyet Mah.", type: "Enkaz altı", sev: "critical", time: "14:32", persons: 4, assigned: "AMB-118" },
   { id: "INC-4470", loc: "Adana – Seyhan, Barış Mah.", type: "Yaralı", sev: "high", time: "14:28", persons: 2, assigned: "AMB-072" },
@@ -412,36 +416,36 @@ export const ambulances = [
   { id: "AMB-133", crew: "Ekip 9", status: "Müsait", dest: "—", eta: "—", route: "—", risk: "low" },
 ];
 
-// ===== PF-RSK01 — SAHA YOL HASARI KAYITLARI =====
+// ===== SAHA YOL HASARI KAYITLARI =====
 export const roadDamageEntries = [
-  { id: "RD-0142", segment: "E-90 / Km 214 (Mersin–Hatay)", type: "Köprü hasarı", severity: "impassable", entered: "AFAD · 13:12", note: "Viyadük orta ayak çatlağı, tam kapalı.", consumedBy: "PF-AI03" },
-  { id: "RD-0141", segment: "D-817 / Km 38 (Kırıkhan)", type: "Yüzey çökmesi", severity: "restricted", entered: "AFAD · 12:48", note: "Tek şerit geçiş, ağır tonaj yasak.", consumedBy: "PF-AI03" },
-  { id: "RD-0139", segment: "O-52 / Adana Çevre Yolu", type: "Enkaz / moloz", severity: "restricted", entered: "AFAD · 11:20", note: "Sağ şerit kapalı, temizleme sürüyor.", consumedBy: "PF-AI03" },
-  { id: "RD-0136", segment: "D-400 / Osmaniye girişi", type: "Heyelan", severity: "passable", entered: "AFAD · 09:55", note: "Yol açıldı, hız sınırı 40 km/s.", consumedBy: "PF-AI03" },
+  { id: "RD-0142", segment: "E-90 / Km 214 (Mersin–Hatay)", type: "Köprü hasarı", severity: "impassable", entered: "AFAD · 13:12", note: "Viyadük orta ayak çatlağı, tam kapalı.", consumedBy: "Yol Riski Modeli" },
+  { id: "RD-0141", segment: "D-817 / Km 38 (Kırıkhan)", type: "Yüzey çökmesi", severity: "restricted", entered: "AFAD · 12:48", note: "Tek şerit geçiş, ağır tonaj yasak.", consumedBy: "Yol Riski Modeli" },
+  { id: "RD-0139", segment: "O-52 / Adana Çevre Yolu", type: "Enkaz / moloz", severity: "restricted", entered: "AFAD · 11:20", note: "Sağ şerit kapalı, temizleme sürüyor.", consumedBy: "Yol Riski Modeli" },
+  { id: "RD-0136", segment: "D-400 / Osmaniye girişi", type: "Heyelan", severity: "passable", entered: "AFAD · 09:55", note: "Yol açıldı, hız sınırı 40 km/s.", consumedBy: "Yol Riski Modeli" },
 ];
 
-// ===== PF-SYS02 — BİLDİRİMLER =====
+// ===== BİLDİRİMLER =====
 export const notifications = [
-  { id: 1, sev: "critical", title: "YBÜ kapasite eşiği aşıldı", body: "Hatay Devlet Hastanesi YBÜ doluluğu %112. Tahliye planı gerekli.", time: "14:33", pf: "PF-EMG01", read: false },
-  { id: 2, sev: "critical", title: "Koridor C-02 riskli duruma geçti", body: "Yol riski modeli C-02 için risk skorunu %82'ye çıkardı.", time: "14:21", pf: "PF-GET03", read: false },
-  { id: 3, sev: "high", title: "SN-07 su stoğu kritik", body: "Gaziantep güvenli düğümünde kalan su ≤ 2 gün.", time: "13:58", pf: "PF-GET08", read: false },
-  { id: 4, sev: "medium", title: "Kırılganlık verisi bayatladı", body: "PF-DAT05 son senkron 2 gün önce. AFAD besleme gecikmesi.", time: "12:40", pf: "PF-DAT05", read: true },
-  { id: 5, sev: "low", title: "Yerel Optimizasyon tamamlandı", body: "PF-AI04 çalıştırması 6 dk 20 sn'de tamamlandı, sonuçlar hazır.", time: "08:06", pf: "PF-AI04", read: true },
-  { id: 6, sev: "low", title: "OSM veri güncellemesi uygulandı", body: "Admin tarafından yol ağı güncellendi, PostGIS senkronize.", time: "06:12", pf: "PF-DAT06", read: true },
+  { id: 1, sev: "critical", title: "YBÜ kapasite eşiği aşıldı", body: "Hatay Devlet Hastanesi YBÜ doluluğu %112. Tahliye planı gerekli.", time: "14:33", source: "Sağlık Bakanlığı", read: false },
+  { id: 2, sev: "critical", title: "Koridor C-02 riskli duruma geçti", body: "Yol riski modeli C-02 için risk skorunu %82'ye çıkardı.", time: "14:21", source: "Yol Riski Modeli", read: false },
+  { id: 3, sev: "high", title: "SN-07 su stoğu kritik", body: "Gaziantep güvenli düğümünde kalan su ≤ 2 gün.", time: "13:58", source: "Kızılay", read: false },
+  { id: 4, sev: "medium", title: "Kırılganlık verisi bayatladı", body: "Bina kırılganlık verisinin son senkronu 2 gün önce. AFAD besleme gecikmesi.", time: "12:40", source: "AFAD", read: true },
+  { id: 5, sev: "low", title: "Yerel Optimizasyon tamamlandı", body: "Yerel optimizasyon çalıştırması 6 dk 20 sn'de tamamlandı, sonuçlar hazır.", time: "08:06", source: "Optimizasyon Servisi", read: true },
+  { id: 6, sev: "low", title: "OSM veri güncellemesi uygulandı", body: "Admin tarafından yol ağı güncellendi, PostGIS senkronize.", time: "06:12", source: "OSM Servisi", read: true },
 ];
 
-// ===== PF-SYS04 — DENETİM KAYDI =====
+// ===== DENETİM KAYDI =====
 export const auditLog = [
-  { time: "14:32:18", user: "Gen. Yılmaz K.", role: "AFAD", action: "YZ Tavsiyesi Onaylandı", detail: "YBÜ yeniden konuşlanması — Adana", type: "approval", pf: "PF-AI04" },
-  { time: "14:28:05", user: "Uzm. Elif D.", role: "KIZILAY", action: "Kaynak Tahsisi Değiştirildi", detail: "Su tankeri kapasitesi x8'e çıkarıldı", type: "change", pf: "PF-GET08" },
-  { time: "14:15:42", user: "Uzm. Mert A.", role: "ADMIN", action: "OSM Katmanı Güncellendi", detail: "Yol ağı verisi PostGIS'e yazıldı", type: "update", pf: "PF-DAT06" },
-  { time: "14:01:30", user: "Sistem", role: "—", action: "Otomatik Veri Yenileme", detail: "AFAD entegrasyonu senkronize edildi", type: "system", pf: "PF-DAT01" },
-  { time: "13:58:22", user: "Kdr. Fatih D.", role: "E112", action: "Giriş", detail: "Çok faktörlü doğrulama ile giriş yapıldı", type: "auth", pf: "PF-SYS01" },
-  { time: "13:45:10", user: "Uzm. Mert A.", role: "ADMIN", action: "Log Dışa Aktarıldı", detail: "Günlük operasyon denetim kaydı indirildi", type: "export", pf: "PF-SYS04" },
-  { time: "13:12:04", user: "Gen. Yılmaz K.", role: "AFAD", action: "Saha Verisi Girildi", detail: "RD-0142 E-90 köprü hasarı kaydı", type: "change", pf: "PF-RSK01" },
+  { time: "14:32:18", user: "Gen. Yılmaz K.", role: "AFAD", action: "YZ Tavsiyesi Onaylandı", detail: "YBÜ yeniden konuşlanması — Adana", type: "approval", module: "YZ Önerisi" },
+  { time: "14:28:05", user: "Uzm. Elif D.", role: "KIZILAY", action: "Kaynak Tahsisi Değiştirildi", detail: "Su tankeri kapasitesi x8'e çıkarıldı", type: "change", module: "Kaynak Tahsisi" },
+  { time: "14:15:42", user: "Uzm. Mert A.", role: "ADMIN", action: "OSM Katmanı Güncellendi", detail: "Yol ağı verisi PostGIS'e yazıldı", type: "update", module: "Harita Verisi" },
+  { time: "14:01:30", user: "Sistem", role: "—", action: "Otomatik Veri Yenileme", detail: "AFAD entegrasyonu senkronize edildi", type: "system", module: "Veri Toplama" },
+  { time: "13:58:22", user: "Kdr. Fatih D.", role: "E112", action: "Giriş", detail: "Çok faktörlü doğrulama ile giriş yapıldı", type: "auth", module: "Oturum" },
+  { time: "13:45:10", user: "Uzm. Mert A.", role: "ADMIN", action: "Log Dışa Aktarıldı", detail: "Günlük operasyon denetim kaydı indirildi", type: "export", module: "Log Servisi" },
+  { time: "13:12:04", user: "Gen. Yılmaz K.", role: "AFAD", action: "Saha Verisi Girildi", detail: "RD-0142 E-90 köprü hasarı kaydı", type: "change", module: "Saha Verisi" },
 ];
 
-// ===== PF-SYS03 — VAULT =====
+// ===== VAULT =====
 export const vaultEntries = [
   { key: "afad/integration/api-key", scope: "Koordinasyon Gateway", type: "API Anahtarı", rotated: "12 gün önce", ttl: "90 gün", status: "online" },
   { key: "kizilay/integration/api-key", scope: "Koordinasyon Gateway", type: "API Anahtarı", rotated: "12 gün önce", ttl: "90 gün", status: "online" },

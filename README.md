@@ -1,18 +1,18 @@
 # MEDAIGENCY — Lot C Operasyon Konsolu (React Native)
 
 **AI-Driven Disaster Resilience, Medical Response, and Multi-Purpose Resource Logistics Management System**
-İzmir Katip Çelebi Üniversitesi (İKÇÜ) — Interreg NEXT MED MEDAIGENCY Projesi, RFQ 0001 — Lot C
+İzmir Katip Çelebi Üniversitesi (İKÇÜ) — Interreg NEXT MED MEDAIGENCY Projesi, Lot C
 Venus Robotik Medikal ve Protez A.Ş.
 
-Figma prototipinin, **SRS V1.0 (IEEE Std 29148-2018 uyumlu)** dokümanına göre yeniden düzenlenmiş
-React Native / Expo gerçeklemesi.
+Afet hazırlığı, acil müdahale ve kaynak lojistiği için YZ destekli operasyon konsolunun
+React Native / Expo gerçeklemesi. Tek kod tabanı web, iOS ve Android'de çalışır.
 
 ---
 
 ## Hızlı Başlangıç
 
 ```bash
-cd ~/Desktop/MedaigencyMobile
+cd ~/code/MedaigencyMobile
 npm install
 npm run web        # tarayıcıda → http://localhost:8081
 ```
@@ -29,41 +29,64 @@ Tip kontrolü: `npx tsc --noEmit`
 
 ### Demo girişi
 
-Giriş ekranında **SRS §2.3'teki beş aktörden biri** seçilir; e-posta/şifre otomatik dolar,
-"Güvenli Giriş Yap" → çok faktörlü doğrulama onayı yeterlidir. Tam menüyü görmek için
-**Sistem Yöneticisi & Karar Verici (Admin)** ile giriş yapın.
+Giriş ekranında kurum seçilir; e-posta ve şifre otomatik dolar. "Güvenli Giriş Yap" sonrasında
+doğrulama adımına **herhangi bir 6 haneli kod** girilir (yalnızca demo sunucuda). Tüm menüyü görmek
+ve YZ önerilerini onaylamak için **Sistem Yöneticisi & Karar Verici** ile giriş yapın.
 
 ---
 
-## SRS'e Göre Yapılan Düzenlemeler
+## API Katmanı
 
-Prototip 13 ekrandan **20 ekrana** çıkarıldı; eklenenler doğrudan SRS'te tanımlı olup
-prototipte karşılığı bulunmayan ürün fonksiyonlarını gerçekler.
+Uygulama hiçbir veriyi doğrudan dosyadan okumaz; tüm okuma ve yazma işlemleri `src/api`
+üzerinden geçer.
 
-| Eklenen ekran | Gerçeklediği fonksiyonlar | Gerekçe |
-|---|---|---|
-| Rol seçimli giriş | PF-SYS01 | SRS §2.3 — beş aktör, SEC-001/009 en az yetki |
-| Veri Toplama Durumu | PF-DAT01…06 | Prototipte veri alım katmanı hiç yoktu |
-| YZ Model Orkestrasyonu | PF-AI01…06 + PF-GET01…08 | Model tetikleme ve sonuç alma akışı eksikti |
-| Saha Veri Girişi | PF-RSK01 | AFAD manuel yol hasarı girişi eksikti |
-| Acil Sevk & Yönlendirme | PF-EMG02/03/04 + PF-AI06 | 112 olay/ambulans/güzergah akışı eksikti |
-| Bildirimler | PF-SYS02 | Bildirim Servisi görünümü eksikti |
-| Vault & Sır Yönetimi | PF-SYS03 | Vault yönetimi eksikti |
-| Gereksinim İzlenebilirliği | SRS §5 | RTM'nin arayüzde doğrulanabilmesi için |
-
-**Menü grupları SRS §3.1.1 ile birebir aynıdır:**
-Ana · Kapasite & Kaynak · Planlama & YZ · Koordinasyon · Yönetim
-
-### Bağlayıcı kısıtların gerçeklenmesi
-
-| Gereksinim | Nerede görünür |
+| Ortam değişkeni | Davranış |
 |---|---|
-| **CON-007 / SEC-008** — YZ önerileri insan onayı gerektirir | Her öneri kartında Onayla/Reddet/Yeniden Hesapla; onaysız hiçbir eylem uygulanmaz. Sistem Ayarları'nda "YZ Otomatik Uygulama" kalıcı **KİLİTLİ**. |
-| **CON-008 / QLT-006** — YZ çıktıları girdi verisine kadar izlenebilir | Her ekran başlığında ve her öneri kartında **PF rozetleri**; öneri kartlarında "Girdi Fonksiyonları" bölümü. |
-| **CON-003 / SEC-001 / SEC-009** — RBAC, en az yetki | Menü role göre filtrelenir; model tetikleme yalnızca ilgili aktöre açıktır; saha girişi yalnızca AFAD'a açıktır. |
-| **CON-004 / SEC-006** — denetim kaydı | Giriş, YZ onay/ret, saha girişi, model tetikleme ve Vault rotasyonu **canlı olarak** Denetim Günlüğü'ne yazılır. |
-| **SEC-002** — Vault | Sır **değerleri** arayüzde hiçbir koşulda gösterilmez; yalnızca meta veri listelenir. |
-| **CON-005 / DSN-002** — geospatial | Altlık, OpenStreetMap verisinden üretilen karolarla Leaflet üzerinde çizilir; görünüm Türkiye ile Akdeniz havzasını kapsar. Üzerine 10 operasyonel katman gerçek WGS84 koordinatlarıyla bindirilir: hastane kapasite yayları, Güvenli Düğüm stok halkaları, koridor risk durumu. |
+| `EXPO_PUBLIC_API_URL` tanımlı | İstemci gerçek gateway'lere HTTPS/JSON üzerinden bağlanır |
+| Tanımlı değil (varsayılan) | Cihaz içi **demo sunucu** (`src/api/mockServer.ts`) aynı sözleşmeyle yanıt verir; durum çubuğunda "DEMO SUNUCU" görünür |
+
+Gerçek arka uca geçmek için proje kökünde `.env.local` oluşturmak yeterlidir:
+
+```bash
+echo "EXPO_PUBLIC_API_URL=https://api.ornek-kurum.gov.tr" > .env.local
+```
+
+### Uç noktalar
+
+| Gateway | Uç nokta | İşlev |
+|---|---|---|
+| — | `POST /auth/login` · `/auth/refresh` · `/auth/logout` | Çok faktörlü giriş, token yenileme ve iptal |
+| — | `GET /notifications` · `POST /notifications/{id}/read` · `/read-all` | Bildirimler |
+| — | `GET /jobs/{jobId}` | Model işinin durumu ve ilerlemesi |
+| Koordinasyon | `POST /coordination/models/{model}/jobs` | Tehlike, risk, yol riski, yerel optimizasyon modellerini tetikleme |
+| Koordinasyon | `GET /coordination/models/{model}/results` | Model sonuçlarını alma |
+| Koordinasyon | `GET /coordination/datasets/{observatory\|exposure\|fragility}` | Dağıtım Sistemi veri kümeleri |
+| Koordinasyon | `GET`, `POST /coordination/road-damage` | Saha yol hasarı kayıtları |
+| Acil Durum | `POST /emergency/models/emergency/jobs` | Acil gerçek zamanlı YZ |
+| Backoffice | `POST /backoffice/models/globalOptimization/jobs` | Uluslararası optimizasyon |
+| Backoffice | `GET /backoffice/recommendations` · `POST …/{id}/decision` · `POST …/{id}/recompute` | YZ önerisi onay / ret / yeniden hesaplama |
+| Backoffice | `POST /backoffice/osm/updates` · `GET …/{jobId}` | Harita / yol ağı güncellemesi |
+| Backoffice | `GET /backoffice/audit` · `GET /backoffice/audit/export` | Denetim kaydı ve CSV dışa aktarma |
+| Backoffice | `GET /backoffice/vault` · `POST …/rotate` · `PUT …/value` | Vault meta verisi, rotasyon, değer güncelleme |
+
+Hata yanıtları `{ "code": "...", "message": "..." }` biçimindedir; `message` doğrudan kullanıcıya
+gösterilir. Erişim token'ı dolmak üzereyken istemci kendiliğinden yeniler; sunucu `token_expired`
+döndürürse isteği bir kez tekrarlar.
+
+---
+
+## Temel Davranışlar
+
+| Konu | Nasıl gerçeklendi |
+|---|---|
+| YZ önerileri insan onayı gerektirir | Öneri kartında **Onayla / Reddet / Yeniden Hesapla**; ret için gerekçe zorunlu. Karar yetkisi yalnızca karar vericidedir. Ayarlar'daki "YZ Otomatik Uygulama" kalıcı olarak kilitlidir. |
+| YZ çıktıları girdisine kadar izlenebilir | Her öneri ve model sonucu, onu üreten veri kümelerini düz Türkçe etiketlerle listeler. |
+| Rol tabanlı erişim, en az yetki | Her rolün izin listesi `src/auth/roles.ts` içindedir; menü, düğmeler ve sunucu aynı listeye göre karar verir. |
+| Denetim kaydı | Giriş/çıkış, öneri kararları, model tetikleme ve tamamlanma, sonuç alma, saha girişi, harita güncellemesi, Vault işlemleri ve log dışa aktarma **sunucu tarafında** kaydedilir. |
+| Vault | Sır değerleri arayüzde hiçbir koşulda gösterilmez; yeni değer yalnızca sunucuya gönderilir. |
+| Geospatial | Leaflet + OpenStreetMap verisi; Türkiye ve Akdeniz havzası, gerçek WGS84 koordinatlarıyla 12 operasyonel katman. |
+
+Menü grupları: Ana · Kapasite & Kaynak · Planlama & YZ · Koordinasyon · Yönetim
 
 ---
 
@@ -72,44 +95,32 @@ Ana · Kapasite & Kaynak · Planlama & YZ · Koordinasyon · Yönetim
 ```
 App.tsx                       Kök — oturum kontrolü ve ekran yönlendirmesi
 src/
-  theme/tokens.ts             Renk paleti (Figma prototipinden birebir), tipografi, yardımcılar
-  data/srs.ts                 SRS kataloğu: 30 ürün fonksiyonu, CON/SEC/PER/QLT, RTM
-  data/mock.ts                Demo operasyonel veri (gerçekte dış arayüzlerden gelir)
-  auth/roles.ts               SRS §2.3 aktörleri ve fonksiyon yetki matrisi
-  state/AppState.tsx          Oturum, YZ kararları, denetim kaydı, model çalıştırmaları
+  api/
+    config.ts                 API adresi ve demo/canlı mod seçimi
+    http.ts                   HTTPS taşıyıcısı ve ApiError
+    client.ts                 Uç noktalar, token yenileme
+    mockServer.ts             Cihaz içi demo sunucu (aynı sözleşme)
+    types.ts                  İstek/yanıt tipleri
+    useQuery.ts               Veri okuma hook'u
+  auth/roles.ts               Roller, izinler, model/veri erişim kuralları
+  state/AppState.tsx          Oturum, bildirimler, öneri kararları, model işleri
+  data/mock.ts                Demo sunucunun başlangıç verisi
+  theme/tokens.ts             Renk paleti, tipografi, yardımcılar
+  utils/download.ts           CSV/metin dosyası indirme veya paylaşma
   navigation/
-    registry.ts               Ekran kayıt defteri (grup + gerçeklenen PF'ler)
+    registry.ts               Ekran kayıt defteri (grup + gerekli izinler)
     Shell.tsx                 Uyarlanabilir kenar çubuğu / çekmece + durum çubuğu
   components/
     ui.tsx                    Tasarım sistemi (kart, KPI, tablo, rozet, slider…)
     charts.tsx                react-native-svg tabanlı alan/çubuk grafikleri
     OperationalMap.tsx        Operasyonel GIS haritası (çerçeve + gösterge)
-    leaflet/
-      mapHtml.ts              OSM/Leaflet harita belgesini üreten katman
-      MapFrame.tsx            iOS/Android köprüsü (react-native-webview)
-      MapFrame.web.tsx        Web köprüsü (sandbox'lı <iframe srcDoc>)
-    AIRecCard.tsx             YZ karar destek kartı (CON-007/CON-008)
+    leaflet/                  OSM/Leaflet harita belgesi ve web/native köprüleri
+    AIRecCard.tsx             YZ karar destek kartı (onay / ret / yeniden hesaplama)
     Screen.tsx                Ortak ekran gövdesi ve esnek sütun yerleşimi
-  screens/                    20 ekran
+  screens/                    18 ekran
 ```
 
-### Web prototipinden taşınırken yapılan teknik dönüşümler
-
-React Native, web prototipinin bazı bağımlılıklarını çalıştıramaz; şu karşılıklar kullanıldı:
-
-| Web prototipi | React Native karşılığı |
-|---|---|
-| Tailwind CSS sınıfları | `StyleSheet` + tasarım token'ları |
-| `recharts` (yalnızca DOM) | `react-native-svg` ile yazılmış `AreaChart` / `BarChart` |
-| `lucide-react` | `@expo/vector-icons` (Feather) |
-| Şematik SVG Türkiye haritası | Leaflet + OSM karoları; ortak HTML belgesi web'de `<iframe srcDoc>`, native'de `WebView` içinde koşar |
-| HTML `<table>` | Yatay kaydırılabilir `Table` bileşeni |
-| `<input type="range">` | `PanResponder` tabanlı `Slider` |
-
 ### Uyarlanabilir yerleşim
-
-Tek kod tabanı hem masaüstü web konsolu (SRS §3.1.2 — "standart masaüstü tarayıcılar")
-hem de mobil cihaz için çalışır:
 
 - **≥ 1000 px** — kalıcı kenar çubuğu, üç sütunlu GIS ekranı, çok sütunlu paneller
 - **< 1000 px** — hamburger menü + çekmece, tek sütuna inen paneller, katlanabilir harita kontrolleri
@@ -118,12 +129,10 @@ hem de mobil cihaz için çalışır:
 
 ## Bilinen Sınırlar
 
-- Veriler statiktir; gerçek dağıtımda AFAD, Kızılay, Sağlık Bakanlığı, 112 ve Kandilli
-  arayüzlerinden Redis akış çekirdeği üzerinden gelir (SRS §3.1.3).
-- Harita altlığı OpenStreetMap'tir (ODbL); karolar CARTO'nun açık *Dark Matter* setinden
-  çevrimiçi çekilir, dolayısıyla harita internet bağlantısı ister ve çevrimdışı çalışmaz.
-  Üretimde DSN-002 uyarınca kurum içi OSM Servisi + PostGIS karo/veri kaynağı kullanılacaktır.
-- Harita üzerindeki konumlar gerçek WGS84 koordinatlarıdır; ancak hastane/depo/koridor
-  kayıtlarının kendisi hâlâ `src/data/mock.ts` içindeki temsilî veridir.
-- Hazard/Risk hesaplamaları simüle edilir; üretimde OpenQuake motoru çalıştırılır (DSN-003).
-- Kimlik doğrulama demo amaçlıdır; üretimde Auth Servisi + JWT (SEC-003) kullanılır.
+- Demo sunucu verileri temsilîdir; model çalıştırmaları gerçek hesap yapmaz, süreyi ve sonucu
+  taklit eder. Gerçek tehlike/risk hesapları arka uçta OpenQuake motoruyla yapılır.
+- Panolardaki bazı göstergeler (KPI'lar, grafikler, hastane ve envanter tabloları) henüz
+  `src/data/mock.ts` içindeki statik veriden okunur; bunlar için uç nokta tanımlanınca API'ye taşınmalıdır.
+- Harita altlığı Esri World Dark Gray Canvas karolarından çevrimiçi çekilir (OpenStreetMap verisi
+  içerir); internet bağlantısı gerektirir. Üretimde kurum içi OSM Servisi + PostGIS kullanılacaktır.
+- Demo sunucunun durumu bellekte tutulur; sayfa yenilendiğinde başlangıç verisine döner.

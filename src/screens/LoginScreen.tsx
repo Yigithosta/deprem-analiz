@@ -1,16 +1,18 @@
 import React, { useState } from "react";
 import { View, ScrollView, StyleSheet, TextInput, Pressable, useWindowDimensions } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, FONT, RADIUS } from "../theme/tokens";
-import { Txt, Row, Btn, Card, PFBadge, Checkbox } from "../components/ui";
+import { C, alpha, FONT, RADIUS, themed } from "../theme/tokens";
+import { Txt, Row, Btn, Card, Checkbox, Notice } from "../components/ui";
 import { ROLES, type Role } from "../auth/roles";
 import { useApp } from "../state/AppState";
+import { errorMessage } from "../api/client";
+import { API_MODE } from "../api/config";
 
 /**
- * PF-SYS01 — Sisteme giriş.
- * SEC-001 (kimlik doğrulama + RBAC), SEC-003 (JWT erişim token'ı),
- * SEC-009 (en az yetki). Rol seçimi, kullanıcının SRS §2.3'teki hangi aktör
- * olarak oturum açtığını belirler ve menü yetkilendirmesini sürer.
+ * Sisteme giriş.
+ * Kurum seçimi → kimlik bilgileri → çok faktörlü doğrulama. Sunucu başarılı
+ * girişte erişim ve yenileme token'ı döndürür; kurum seçimi, oturumun hangi
+ * rol ve izinlerle açılacağını belirler.
  */
 export function LoginScreen() {
   const { login } = useApp();
@@ -23,30 +25,39 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState("TR");
 
   function pickRole(r: Role) {
     setSelected(r);
     setEmail(r.demoUser.email);
     setPassword("••••••••••••");
+    setError(null);
     setStep("credentials");
   }
 
   function submitCredentials() {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setStep("mfa");
-    }, 700);
+    setError(null);
+    if (!email.trim() || !password) {
+      setError("E-posta ve şifre zorunludur.");
+      return;
+    }
+    setOtp("");
+    setStep("mfa");
   }
 
-  function confirmMfa() {
+  async function confirmMfa() {
+    if (!selected) return;
     setLoading(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      await login(selected, { email: email.trim(), password, otp });
+    } catch (e) {
+      setError(errorMessage(e));
       setLoading(false);
-      if (selected) login(selected);
-    }, 600);
+    }
   }
 
   return (
@@ -55,8 +66,8 @@ export function LoginScreen() {
         <View style={{ width: "100%", maxWidth: step === "role" ? 900 : 460 }}>
           {/* Kısıtlı erişim şeridi */}
           <View style={s.restricted}>
-            <Feather name="lock" size={11} color={C.danger} />
-            <Txt size={10} weight="700" color={C.danger} upper>
+            <Feather name="lock" size={11} color={C.txt2} />
+            <Txt size={10} weight="600" color={C.txt2} upper>
               Sadece Yetkili Erişim — Kısıtlı Sistem
             </Txt>
           </View>
@@ -65,19 +76,14 @@ export function LoginScreen() {
             {/* Logo */}
             <View style={{ alignItems: "center", marginBottom: 22 }}>
               <View style={s.logo}>
-                <Feather name="shield" size={24} color="#fff" />
+                <Feather name="shield" size={24} color={C.onPrimary} />
               </View>
-              <Txt size={22} weight="700" color={C.txt} style={{ marginTop: 10 }}>
+              <Txt size={22} weight="700" color={C.txt} style={{ marginTop: 12, letterSpacing: 2 }}>
                 MEDAIGENCY
               </Txt>
               <Txt size={10} weight="600" color={C.muted} upper style={{ marginTop: 4, textAlign: "center" }}>
                 LOT C — Bütünleşik YZ Destekli Afet Dayanıklılık Ekosistemi
               </Txt>
-              <Row gap={5} style={{ marginTop: 8 }}>
-                <PFBadge id="PF-SYS01" />
-                <PFBadge id="SEC-001" color={C.gis} />
-                <PFBadge id="SEC-009" color={C.gis} />
-              </Row>
             </View>
 
             {/* ── ADIM 1: ROL SEÇİMİ ── */}
@@ -87,8 +93,8 @@ export function LoginScreen() {
                   Kurum / Aktör Seçimi
                 </Txt>
                 <Txt size={11} color={C.muted} style={{ marginTop: 3, marginBottom: 14 }}>
-                  SRS §2.3'te tanımlı beş aktörden biriyle oturum açın. Erişiminiz, en az yetki ilkesi uyarınca
-                  yalnızca rolünüze atanmış ürün fonksiyonlarıyla sınırlandırılır.
+                  Kurumunuzu seçerek oturum açın. Erişiminiz, en az yetki ilkesi uyarınca yalnızca rolünüze
+                  tanımlı işlemlerle sınırlandırılır.
                 </Txt>
                 <View style={[s.roleGrid, !wide && { flexDirection: "column" }]}>
                   {ROLES.map((r) => (
@@ -97,7 +103,7 @@ export function LoginScreen() {
                       onPress={() => pickRole(r)}
                       style={({ pressed }) => [
                         s.roleCard,
-                        wide && { flexBasis: "31%", flexGrow: 1 },
+                        wide ? { flexBasis: "31%", flexGrow: 1 } : { minWidth: 0 },
                         { borderColor: alpha(r.color, 0.35) },
                         pressed && { borderColor: r.color, backgroundColor: alpha(r.color, 0.07) },
                       ]}
@@ -127,7 +133,7 @@ export function LoginScreen() {
                           {r.gateway}
                         </Txt>
                         <Txt size={9} weight="700" color={r.color} mono>
-                          {r.functions.length} PF
+                          {r.permissions.length} yetki
                         </Txt>
                       </View>
                     </Pressable>
@@ -195,8 +201,9 @@ export function LoginScreen() {
                   disabled={loading}
                   style={{ marginTop: 18, paddingVertical: 13 }}
                 />
+                {!!error && <Notice tone="error" text={error} style={{ marginTop: 10 }} />}
                 <Txt size={9} color={C.muted} style={{ marginTop: 10, textAlign: "center" }}>
-                  SEC-004 — Bağlantı TLS ile şifrelenmiştir · SEC-003 — Oturum JWT ile yönetilir
+                  Bağlantı TLS ile şifrelenir · Oturum JWT erişim token'ı ile yönetilir
                 </Txt>
               </View>
             )}
@@ -205,22 +212,36 @@ export function LoginScreen() {
             {step === "mfa" && selected && (
               <View style={{ alignItems: "center" }}>
                 <View style={[s.mfaIcon, { backgroundColor: alpha(C.ai, 0.16) }]}>
-                  <Feather name="smartphone" size={26} color={C.ai} />
+                  <Feather name="smartphone" size={24} color={C.txt} />
                 </View>
                 <Txt size={14} weight="600" color={C.txt} style={{ marginTop: 14 }}>
                   İki Faktörlü Doğrulama
                 </Txt>
                 <Txt size={11} color={C.muted} style={{ marginTop: 8, textAlign: "center", lineHeight: 17 }}>
                   {selected.demoUser.name} · {selected.demoUser.title}{"\n"}
-                  Kimliğiniz {selected.gateway} üzerinden tanındı. Onaylayın.
+                  Doğrulama uygulamanızdaki 6 haneli kodu girin.
                 </Txt>
+                <TextInput
+                  value={otp}
+                  onChangeText={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  placeholder="000000"
+                  placeholderTextColor={C.muted}
+                  style={[s.input, s.otp]}
+                />
+                {API_MODE === "mock" && (
+                  <Txt size={9.5} color={C.muted} style={{ marginTop: 6, textAlign: "center" }}>
+                    Demo ortamı: herhangi bir 6 haneli kod kabul edilir.
+                  </Txt>
+                )}
+                {!!error && <Notice tone="error" text={error} style={{ marginTop: 10, alignSelf: "stretch" }} />}
                 <Btn
                   label={loading ? "Giriş yapılıyor…" : "Onayla ve Sisteme Gir"}
                   icon={loading ? "loader" : "shield"}
-                  color={C.ai}
                   onPress={confirmMfa}
-                  disabled={loading}
-                  style={{ marginTop: 20, alignSelf: "stretch", paddingVertical: 13 }}
+                  disabled={loading || otp.length !== 6}
+                  style={{ marginTop: 16, alignSelf: "stretch", paddingVertical: 13 }}
                 />
                 <Pressable onPress={() => setStep("credentials")} style={{ marginTop: 12 }}>
                   <Txt size={11} color={C.muted}>
@@ -255,7 +276,7 @@ export function LoginScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   scroll: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 16, paddingVertical: 28 },
   restricted: {
@@ -268,14 +289,14 @@ const s = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: RADIUS.pill,
     borderWidth: 1,
-    borderColor: alpha(C.danger, 0.35),
-    backgroundColor: alpha(C.danger, 0.09),
+    borderColor: C.borderStrong,
+    backgroundColor: C.card,
     marginBottom: 18,
   },
   logo: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: C.blue,
@@ -319,6 +340,7 @@ const s = StyleSheet.create({
     fontFamily: FONT,
   },
   eye: { position: "absolute", right: 12, top: 12 },
-  mfaIcon: { width: 54, height: 54, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  otp: { marginTop: 16, alignSelf: "stretch", textAlign: "center", fontSize: 20, letterSpacing: 8 },
+  mfaIcon: { width: 50, height: 50, borderRadius: RADIUS.lg, alignItems: "center", justifyContent: "center" },
   lang: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5 },
-});
+}));

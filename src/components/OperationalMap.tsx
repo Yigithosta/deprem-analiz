@@ -1,13 +1,13 @@
 import React, { useMemo } from "react";
 import { View, StyleSheet } from "react-native";
-import { C, alpha, RADIUS } from "../theme/tokens";
+import { C, alpha, RADIUS, themed } from "../theme/tokens";
 import { buildMapHtml } from "./leaflet/mapHtml";
 import { MapFrame } from "./leaflet/MapFrame";
 import { Txt } from "./ui";
 
 /**
- * Operasyonel GIS haritası — SRS §3.1.1 (Operasyon Paneli / GIS İstihbaratı),
- * CON-005 (geospatial görselleştirme), DSN-002 (OSM Servisi + PostGIS).
+ * Operasyonel GIS haritası — Operasyon Paneli ve GIS İstihbaratı ekranlarında
+ * kullanılır; OSM tabanlı altlık üzerine operasyonel katmanları bindirir.
  *
  * Altlık, OpenStreetMap verisinden üretilen karolarla Leaflet üzerinde çizilir
  * (bkz. leaflet/mapHtml.ts); görünüm Türkiye ile birlikte Akdeniz havzasını
@@ -102,8 +102,8 @@ export function OperationalMap({
   );
 }
 
-const st = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: "#07101f", overflow: "hidden" },
+const st = themed(() => StyleSheet.create({
+  wrap: { flex: 1, backgroundColor: C.mapBg, overflow: "hidden" },
   liveBadge: {
     position: "absolute",
     top: 10,
@@ -119,4 +119,4 @@ const st = StyleSheet.create({
     borderColor: C.border,
   },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success },
-});
+}));

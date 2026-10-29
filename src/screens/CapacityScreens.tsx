@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, RADIUS, loadColor, readyColor, riskColor } from "../theme/tokens";
+import { C, alpha, RADIUS, loadColor, readyColor, riskColor, themed } from "../theme/tokens";
 import { Screen, Cols } from "../components/Screen";
 import {
   Txt, Row, Grid, Card, KPICard, SectionHeader, ScreenHeader, Bar,
-  StatusBadge, PFBadge, PFBadgeRow, Table, AdvisoryNotice, Divider, type Col,
+  StatusBadge, Table, AdvisoryNotice, type Col,
 } from "../components/ui";
 import { AreaChart } from "../components/charts";
 import {
@@ -13,7 +13,7 @@ import {
   incidents, ambulances, GIS_CORRIDORS,
 } from "../data/mock";
 
-/* ══════════════════ TIBBİ KAPASİTE — PF-EMG01 / PF-EMG05 ══════════════════ */
+/* ══════════════════ TIBBİ KAPASİTE ══════════════════ */
 
 export function MedicalScreen() {
   const cols: Col[] = [
@@ -30,8 +30,7 @@ export function MedicalScreen() {
       <ScreenHeader
         title="Tıbbi Kapasite İstihbaratı"
         subtitle="Hastane kapasitesi, YBÜ doluluk, acil servis yükü ve talep tahmini"
-        pfs={["PF-EMG01", "PF-EMG05"]}
-        note="Doluluk oranları Sağlık Bakanlığı'ndan Acil Durum Gateway üzerinden 60 sn'de bir alınır (DEP-002)."
+        note="Doluluk oranları Sağlık Bakanlığı'ndan Acil Durum Gateway üzerinden 60 sn'de bir alınır."
       />
 
       <Grid>
@@ -46,7 +45,6 @@ export function MedicalScreen() {
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Tesis Yük & Kapasite Durumu
           </Txt>
-          <PFBadgeRow ids={["PF-EMG05"]} />
         </Row>
         <Table
           cols={cols}
@@ -76,12 +74,12 @@ export function MedicalScreen() {
 
       <Cols min={330}>
         <Card padded>
-          <SectionHeader title="7 Günlük Tıbbi Talep Tahmini" subtitle="Yerel Optimizasyon modeli çıktısı" right={<PFBadge id="PF-AI04" color={C.ai} />} />
+          <SectionHeader title="7 Günlük Tıbbi Talep Tahmini" subtitle="Yerel Optimizasyon modeli çıktısı" />
           <AreaChart data={forecastData} series={[{ key: "med", label: "Tıbbi Talep %", color: C.blue }]} height={185} />
         </Card>
 
         <Card padded>
-          <SectionHeader title="YZ Tıbbi Önerileri" right={<PFBadge id="PF-AI06" color={C.info} />} />
+          <SectionHeader title="YZ Tıbbi Önerileri" />
           <AdvisoryNotice />
           <View style={{ marginTop: 10 }}>
             {[
@@ -98,7 +96,7 @@ export function MedicalScreen() {
   );
 }
 
-/* ══════════════ ACİL SEVK & YÖNLENDİRME — PF-EMG02/03/04, PF-AI06 ══════════════ */
+/* ══════════════ ACİL SEVK & YÖNLENDİRME ══════════════ */
 
 export function DispatchScreen() {
   const incCols: Col[] = [
@@ -126,8 +124,7 @@ export function DispatchScreen() {
       <ScreenHeader
         title="Acil Sevk & Yönlendirme"
         subtitle="112 olay noktaları, canlı ambulans konumları ve gerçek zamanlı YZ güzergah önerileri"
-        pfs={["PF-EMG02", "PF-EMG03", "PF-EMG04", "PF-AI06"]}
-        note="PER-004 — Güzergah istekleri normal yükte ≤ 10 sn içinde optimize güzergah döndürür."
+        note="Güzergah istekleri normal yükte en geç 10 sn içinde optimize güzergah döndürür."
       />
 
       <Grid>
@@ -144,7 +141,6 @@ export function DispatchScreen() {
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Acil Olay / İhbar Noktaları
           </Txt>
-          <PFBadgeRow ids={["PF-EMG02"]} />
         </Row>
         <Table
           cols={incCols}
@@ -170,7 +166,6 @@ export function DispatchScreen() {
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Ambulans Konumları & Önerilen Güzergahlar
           </Txt>
-          <PFBadgeRow ids={["PF-EMG03", "PF-EMG04"]} />
         </Row>
         <Table
           cols={ambCols}
@@ -202,7 +197,6 @@ export function DispatchScreen() {
           <SectionHeader
             title="Hastane Uygunluk Görünümü"
             subtitle="112'ye sunulan karar-hazır kapasite özeti"
-            right={<PFBadge id="PF-EMG05" />}
           />
           {hospitalRows.map((h) => (
             <Row key={h.name} gap={8} style={{ marginBottom: 8 }}>
@@ -224,7 +218,6 @@ export function DispatchScreen() {
           <SectionHeader
             title="Koridor Yol Riski"
             subtitle="Güzergah önerisini besleyen yol riski çıktısı"
-            right={<PFBadge id="PF-GET03" color={C.gis} />}
           />
           {GIS_CORRIDORS.filter((c) => !c.international).map((c) => (
             <Row key={c.id} gap={8} style={{ marginBottom: 8 }}>
@@ -244,7 +237,7 @@ export function DispatchScreen() {
   );
 }
 
-/* ═══════════ GÜVENLİ DÜĞÜM & KORİDOR — PF-GET07 / PF-GET08 ═══════════ */
+/* ═══════════ GÜVENLİ DÜĞÜM & KORİDOR ═══════════ */
 
 export function LogisticsScreen() {
   const cols: Col[] = [
@@ -272,8 +265,7 @@ export function LogisticsScreen() {
       <ScreenHeader
         title="Güvenli Düğüm & Lojistik Koridor İstihbaratı"
         subtitle="Stok envanteri, ikmal önceliği, koridor güvenilirliği ve transport riski"
-        pfs={["PF-GET07", "PF-GET08", "PF-DAT01", "PF-DAT02"]}
-        note="SRS Figure 3-2 — Güvenli Düğüm & Lojistik Koridor ekranı. CON-017 uyarınca konumlar işlevsel kategori olarak tutulur."
+        note="Operasyon konumları ayrıntılı tesis türü yerine işlevsel kategorileriyle tutulur."
       />
 
       <Grid>
@@ -288,7 +280,6 @@ export function LogisticsScreen() {
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Güvenli Düğüm Stok Envanteri
           </Txt>
-          <PFBadgeRow ids={["PF-GET08"]} />
         </Row>
         <Table
           cols={cols}
@@ -313,7 +304,6 @@ export function LogisticsScreen() {
         <SectionHeader
           title="YZ Lojistik Güzergah Önerileri"
           subtitle="Yerel Optimizasyon modeli · insan onayı bekliyor"
-          right={<PFBadge id="PF-AI04" color={C.ai} />}
         />
         <AdvisoryNotice />
         <View style={{ marginTop: 10 }}>
@@ -327,7 +317,7 @@ export function LogisticsScreen() {
       </Card>
 
       <Card padded>
-        <SectionHeader title="Koridor Güvenilirliği" subtitle="Yük ve risk skorları" right={<PFBadge id="PF-GET03" color={C.gis} />} />
+        <SectionHeader title="Koridor Güvenilirliği" subtitle="Yük ve risk skorları" />
         {GIS_CORRIDORS.map((c) => (
           <View key={c.id} style={{ marginBottom: 11 }}>
             <Row style={{ justifyContent: "space-between", marginBottom: 4 }}>
@@ -367,7 +357,7 @@ export function LogisticsScreen() {
   );
 }
 
-/* ═══════════════ KAYNAK OPTİMİZASYONU — PF-AI04 / PF-GET08 ═══════════════ */
+/* ═══════════════ KAYNAK OPTİMİZASYONU ═══════════════ */
 
 export function AllocationScreen() {
   return (
@@ -375,8 +365,7 @@ export function AllocationScreen() {
       <ScreenHeader
         title="Kaynak Tahsis Optimizasyonu"
         subtitle="Arz, talep, açık analizi ve YZ yeniden dağıtım planları"
-        pfs={["PF-AI04", "PF-GET07", "PF-GET08"]}
-        note="Yerel Optimizasyon modeli, güncel stok (PF-DAT02), talep tahmini ve risk çıktılarını birlikte değerlendirir."
+        note="Yerel Optimizasyon modeli güncel stok miktarlarını, talep tahminini ve risk çıktılarını birlikte değerlendirir."
       />
 
       <Grid>
@@ -408,7 +397,6 @@ export function AllocationScreen() {
         <SectionHeader
           title="YZ Yeniden Dağıtım Planı"
           subtitle="%89 optimize · her kalem ayrı onay gerektirir"
-          right={<PFBadge id="PF-AI04" color={C.ai} />}
         />
         <AdvisoryNotice />
         <View style={{ marginTop: 10 }}>
@@ -425,7 +413,7 @@ export function AllocationScreen() {
   );
 }
 
-/* ══════════ STRATEJİK ÖN KONUŞLANMA — SRS Figure 3-3 ══════════ */
+/* ══════════ STRATEJİK ÖN KONUŞLANMA ══════════ */
 
 export function PrepositioningScreen() {
   return (
@@ -433,8 +421,6 @@ export function PrepositioningScreen() {
       <ScreenHeader
         title="Stratejik Afet Öncesi Ön Konuşlanma"
         subtitle="YZ destekli optimal kaynak yerleşimi, hazırlık skoru ve senaryo hazırlığı"
-        pfs={["PF-AI04", "PF-GET07", "PF-DAT01"]}
-        note="SRS Figure 3-3 — Stratejik Ön Konuşlanma ekranı."
       />
 
       <Grid>
@@ -509,9 +495,9 @@ export function PrepositioningScreen() {
 /* ═══════════════════ Ortak: küçük tavsiye kartı ═══════════════════ */
 
 /**
- * CON-007 — YZ önerisi tavsiye niteliğindedir. Konsol salt-okunur olduğundan
- * kart yalnızca öneriyi ve güven skorunu gösterir; onay/ret kararı burada
- * verilmez.
+ * Kısa YZ tavsiye kartı — öneriyi ve güven skorunu gösterir. Tavsiye
+ * niteliğindedir; uygulanması karar vericinin onayına bağlıdır (Operasyon
+ * Panosu'ndaki Karar Destek Merkezi).
  */
 export function MiniAdvisory({
   title,
@@ -545,18 +531,17 @@ export function MiniAdvisory({
         </View>
       </Row>
 
-      {/* Salt-okunur konsol: öneri yalnızca gösterilir, karar sistem dışında verilir. */}
       <Row gap={6} style={{ marginTop: 9 }}>
         <Feather name="info" size={12} color={C.warning} />
         <Txt size={10.5} color={C.warning} style={{ flex: 1 }}>
-          Tavsiye niteliğindedir · karar yetkili personelce verilir
+          Tavsiye niteliğindedir · uygulanması karar verici onayına bağlıdır
         </Txt>
       </Row>
     </View>
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   cardHead: {
     padding: 13,
     borderBottomWidth: 1,
@@ -579,4 +564,4 @@ const s = StyleSheet.create({
     marginBottom: 9,
   },
   confChip: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4 },
-});
+}));

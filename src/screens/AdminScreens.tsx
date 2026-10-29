@@ -1,21 +1,23 @@
 import React, { useState } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, TextInput } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { C, alpha, RADIUS } from "../theme/tokens";
+import { C, alpha, FONT, RADIUS, themed } from "../theme/tokens";
 import { Screen, Cols } from "../components/Screen";
 import {
-  Txt, Row, Grid, Card, KPICard, SectionHeader, ScreenHeader, Bar, Btn, Toggle,
-  StatusBadge, PFBadge, PFBadgeRow, Table, Divider, EmptyState, type Col,
+  Txt, Row, Grid, Card, KPICard, SectionHeader, ScreenHeader, Btn, Toggle,
+  StatusBadge, Tag, Table, Divider, EmptyState, Notice, type Col,
 } from "../components/ui";
-import { internationalFlows, platformUsers, vaultEntries } from "../data/mock";
-import {
-  PRODUCT_FUNCTIONS, PF_GROUP_LABEL, TRACEABILITY, CONSTRAINTS,
-  SECURITY_REQS, PERFORMANCE_REQS, QUALITY_REQS, type PFGroup,
-} from "../data/srs";
-import { ROLES, ROLE_BY_ID } from "../auth/roles";
+import { hospitalRows, internationalFlows, platformUsers, resourceItems } from "../data/mock";
+import { can, PERMISSION_LABEL, ROLES, ROLE_BY_ID } from "../auth/roles";
 import { useApp } from "../state/AppState";
+import { api, errorMessage } from "../api/client";
+import { API_BASE_URL, API_MODE } from "../api/config";
+import { useQuery } from "../api/useQuery";
+import { useTheme } from "../theme/ThemeProvider";
+import type { VaultEntry } from "../api/types";
+import { saveTextFile, toCsv } from "../utils/download";
 
-/* ══════════ ULUSLARARASI YARDIM — PF-AI05 / DEP-007 ══════════ */
+/* ═══════════════════════ ULUSLARARASI YARDIM ═══════════════════════ */
 
 export function InternationalScreen() {
   const cols: Col[] = [
@@ -31,8 +33,7 @@ export function InternationalScreen() {
       <ScreenHeader
         title="Uluslararası Yardım Koordinasyonu"
         subtitle="Akdeniz havzası kaynak koridorları ve sınır ötesi kaynak akışı"
-        pfs={["PF-AI05", "PF-DAT01", "PF-DAT02"]}
-        note="DEP-007 — Uluslararası ve sınır ötesi veri, ayrı bir dış aktör olarak değil, ulusal otoriteler (ör. AFAD) üzerinden sisteme girer."
+        note="Uluslararası ve sınır ötesi veri, ayrı bir dış kurum olarak değil, ulusal otoriteler (ör. AFAD) üzerinden sisteme girer."
       />
 
       <Grid>
@@ -47,7 +48,6 @@ export function InternationalScreen() {
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Uluslararası Kaynak Akışı
           </Txt>
-          <PFBadgeRow ids={["PF-AI05"]} />
         </Row>
         <Table
           cols={cols}
@@ -78,15 +78,14 @@ export function InternationalScreen() {
       <Card padded>
         <SectionHeader
           title="Çok-Etmenli Optimizasyon Durumu"
-          subtitle="Sınır ötesi kaynak paylaşımını koordine eden model"
-          right={<PFBadge id="PF-AI05" color={C.gis} />}
+          subtitle="Sınır ötesi kaynak paylaşımını koordine eden model · YZ Model Orkestrasyonu ekranından çalıştırılır"
         />
         {[
           { label: "Koordine edilen ülke", val: "7", col: C.gis },
           { label: "Aktif yardım koridoru", val: "4", col: C.success },
           { label: "Bekleyen tahsis kararı", val: "2", col: C.warning },
           { label: "Son çalıştırma", val: "Dün 22:10", col: C.txt2 },
-          { label: "Tetikleyen aktör", val: "Admin (SEC-009)", col: C.ai },
+          { label: "Çalıştırma yetkisi", val: "Sistem Yöneticisi", col: C.ai },
         ].map((r) => (
           <Row key={r.label} style={{ justifyContent: "space-between", marginBottom: 7 }}>
             <Txt size={11} color={C.muted}>
@@ -102,7 +101,7 @@ export function InternationalScreen() {
   );
 }
 
-/* ══════════ BİLDİRİMLER — PF-SYS02 ══════════ */
+/* ═══════════════════════ BİLDİRİMLER ═══════════════════════ */
 
 export function NotificationsScreen() {
   const { notifications, markRead, markAllRead, unreadCount } = useApp();
@@ -112,8 +111,7 @@ export function NotificationsScreen() {
       <ScreenHeader
         title="Bildirimler"
         subtitle="Bildirim Servisi üzerinden iletilen operasyonel uyarı ve durum değişiklikleri"
-        pfs={["PF-SYS02"]}
-        note="PER-001 — Acil bildirimler olay akış çekirdeği üzerinden uçtan uca ≤ 5 sn hedef gecikmeyle iletilir."
+        note="Acil bildirimler olay akış çekirdeği üzerinden uçtan uca en geç 5 sn içinde iletilir."
       />
 
       <Row style={{ justifyContent: "space-between" }}>
@@ -122,6 +120,8 @@ export function NotificationsScreen() {
         </Txt>
         <Btn label="Tümünü Okundu İşaretle" small variant="outline" icon="check" onPress={markAllRead} />
       </Row>
+
+      {notifications.length === 0 && <EmptyState icon="bell-off" text="Bildirim yok." />}
 
       {notifications.map((n) => {
         const col =
@@ -143,7 +143,7 @@ export function NotificationsScreen() {
                       {n.title}
                     </Txt>
                     <StatusBadge status={n.sev} />
-                    <PFBadge id={n.pf} />
+                    <Tag label={n.source} />
                     {!n.read && <View style={[s.unreadDot, { backgroundColor: col }]} />}
                   </Row>
                   <Txt size={11} color={C.muted} style={{ marginTop: 4, lineHeight: 16 }}>
@@ -162,63 +162,142 @@ export function NotificationsScreen() {
   );
 }
 
-/* ══════════ RAPORLAMA ══════════ */
+/* ═══════════════════════ RAPORLAMA ═══════════════════════ */
+
+type GeneratedReport = { name: string; records: number; time: string };
 
 export function ReportingScreen() {
+  const { recommendations, role } = useApp();
+  const [generated, setGenerated] = useState<GeneratedReport[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const time = () => new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+
+  const templates: { name: string; file: string; available: boolean; build: () => Promise<[string[], (string | number)[][]]> }[] = [
+    {
+      name: "Günlük Operasyon Özeti",
+      file: "operasyon-ozeti",
+      available: true,
+      build: async () => [
+        ["Gösterge", "Değer"],
+        [
+          ["Hastane yük endeksi", "%91"],
+          ["Kaynak hazırlık", "%73"],
+          ["Hazır güvenli düğüm", "12/18"],
+          ["Koridor sağlığı", "%68"],
+          ["Karar bekleyen YZ önerisi", recommendations.filter((r) => r.status === "pending").length],
+        ],
+      ],
+    },
+    {
+      name: "Tıbbi Kapasite Raporu",
+      file: "tibbi-kapasite",
+      available: true,
+      build: async () => [
+        ["Hastane", "Kapasite", "YBÜ", "Mevcut yük %", "Tahmini yük %", "Risk"],
+        hospitalRows.map((h) => [h.name, h.cap, h.icu, h.load, h.forecast, h.risk]),
+      ],
+    },
+    {
+      name: "Kaynak Hazırlık Raporu",
+      file: "kaynak-hazirlik",
+      available: true,
+      build: async () => [
+        ["Kalem", "Stok", "Talep", "Birim", "Karşılama %"],
+        resourceItems.map((r) => [r.name, r.stock, r.demand, r.unit, r.pct]),
+      ],
+    },
+    {
+      name: "YZ Karar Günlüğü",
+      file: "yz-karar-gunlugu",
+      available: true,
+      build: async () => [
+        ["Öneri", "Önem", "Güven %", "Durum", "Karar veren", "Saat", "Gerekçe"],
+        recommendations.map((r) => [
+          r.title, r.sev, r.conf, r.status, r.decision?.by ?? "", r.decision?.at ?? "", r.decision?.reason ?? "",
+        ]),
+      ],
+    },
+    {
+      name: "Tehlike & Risk Sonuç Raporu",
+      file: "tehlike-risk-sonuclari",
+      available: can(role, "results.hazard.view") && can(role, "results.risk.view"),
+      build: async () => {
+        const [hazard, risk] = await Promise.all([api.models.results("hazard"), api.models.results("risk")]);
+        return [
+          ["Model", "Gösterge", "Değer", "Üretim zamanı"],
+          [
+            ...hazard.summary.map((r) => [hazard.title, r.label, r.value, hazard.generatedAt]),
+            ...risk.summary.map((r) => [risk.title, r.label, r.value, risk.generatedAt]),
+          ],
+        ];
+      },
+    },
+  ];
+
+  async function generate(t: (typeof templates)[number]) {
+    setBusy(t.name);
+    setError(null);
+    try {
+      const [header, rows] = await t.build();
+      await saveTextFile(`medaigency-${t.file}-${today}.csv`, toCsv(header, rows), "text/csv");
+      setGenerated((prev) => [{ name: t.name, records: rows.length, time: time() }, ...prev]);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <Screen>
-      <ScreenHeader
-        title="Raporlama & Analitik"
-        subtitle="Operasyonel özetler, KPI belgesi ve dışa aktarma"
-        pfs={["PF-GET01", "PF-GET02", "PF-SYS04"]}
-      />
+      <ScreenHeader title="Raporlama & Analitik" subtitle="Operasyonel özetler ve dışa aktarma" />
 
       <Grid>
-        <KPICard label="Üretilen Rapor" value="142" color={C.blue} icon="file-text" />
-        <KPICard label="Otomatik Özet" value="24" color={C.success} icon="cpu" />
-        <KPICard label="PDF İndirme" value="87" color={C.ai} icon="download" />
+        <KPICard label="Rapor Şablonu" value={String(templates.length)} color={C.blue} icon="file-text" />
+        <KPICard label="Bu Oturumda Üretilen" value={String(generated.length)} color={C.success} icon="download" />
+        <KPICard label="Karar Bekleyen Öneri" value={String(recommendations.filter((r) => r.status === "pending").length)} color={C.ai} icon="cpu" />
         <KPICard label="Veri Kalitesi" value="%97.4" color={C.gis} icon="check-circle" />
       </Grid>
 
+      {!!error && <Notice tone="error" text={error} />}
+
       <Cols min={320}>
         <Card padded>
-          <SectionHeader title="Rapor Şablonları" />
-          {[
-            "Günlük Operasyon Özeti",
-            "Tıbbi Kapasite Raporu (PF-EMG01)",
-            "Kaynak Hazırlık Raporu (PF-GET08)",
-            "YZ Karar Günlüğü (CON-004)",
-            "Hazard & Risk Sonuç Raporu (PF-GET01/02)",
-            "AB Proje Raporu (LOT C)",
-          ].map((r) => (
-            <Row key={r} style={s.listRow}>
-              <Txt size={11.5} weight="500" color={C.txt} style={{ flex: 1 }}>
-                {r}
+          <SectionHeader title="Rapor Şablonları" subtitle="CSV olarak indirilir" />
+          {templates.map((t) => (
+            <Row key={t.name} style={s.listRow}>
+              <Txt size={11.5} weight="500" color={t.available ? C.txt : C.muted} style={{ flex: 1 }}>
+                {t.name}
               </Txt>
-              <Btn label="PDF" small variant="outline" icon="download" />
+              <Btn
+                label={busy === t.name ? "Hazırlanıyor…" : "CSV"}
+                small
+                variant="outline"
+                icon="download"
+                disabled={!t.available || busy !== null}
+                onPress={() => generate(t)}
+              />
             </Row>
           ))}
         </Card>
 
         <Card padded>
-          <SectionHeader title="Son Raporlar" />
-          {[
-            { name: "Günlük Özet — 27 Tem", size: "2.4 MB", time: "08:00" },
-            { name: "YZ Karar Günlüğü — 26 Tem", size: "890 KB", time: "Dün" },
-            { name: "Tıbbi Kapasite — 27 Tem 12:00", size: "1.1 MB", time: "12:00" },
-            { name: "Risk Sonuçları — Mw7.2 senaryosu", size: "4.2 MB", time: "07:05" },
-            { name: "AB LOT C — Haziran 2026", size: "8.7 MB", time: "01 Tem" },
-          ].map((r) => (
-            <Row key={r.name} style={s.listRow}>
+          <SectionHeader title="Bu Oturumda Üretilen Raporlar" />
+          {generated.length === 0 && <EmptyState icon="file" text="Henüz rapor üretilmedi." />}
+          {generated.map((r, i) => (
+            <Row key={`${r.name}-${i}`} style={s.listRow}>
               <View style={{ flex: 1 }}>
                 <Txt size={11.5} weight="500" color={C.txt}>
                   {r.name}
                 </Txt>
                 <Txt size={10} color={C.muted} mono style={{ marginTop: 2 }}>
-                  {r.size} · {r.time}
+                  {r.records} satır · {r.time}
                 </Txt>
               </View>
-              <Btn label="İndir" small icon="download" />
+              <Feather name="check-circle" size={13} color={C.success} />
             </Row>
           ))}
         </Card>
@@ -227,18 +306,36 @@ export function ReportingScreen() {
   );
 }
 
-/* ══════════ DENETİM & ETİK — PF-SYS04 / SEC-006 ══════════ */
+/* ═══════════════════════ DENETİM & ETİK ═══════════════════════ */
 
 export function AuditScreen() {
-  const { audit } = useApp();
+  const { auditVersion, bumpAudit } = useApp();
+  const { data: audit = [], error, loading } = useQuery(() => api.audit.list(), [auditVersion]);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  async function exportLogs() {
+    setExporting(true);
+    setExportMsg(null);
+    try {
+      const file = await api.audit.export();
+      await saveTextFile(file.filename, file.content, file.mime);
+      setExportMsg({ tone: "success", text: `${file.records} kayıt ${file.filename} dosyasına aktarıldı.` });
+      bumpAudit();
+    } catch (e) {
+      setExportMsg({ tone: "error", text: errorMessage(e) });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const cols: Col[] = [
     { key: "time", label: "Saat", width: 85 },
     { key: "user", label: "Kullanıcı", width: 150 },
     { key: "role", label: "Rol", width: 90 },
-    { key: "action", label: "Aksiyon", width: 200 },
-    { key: "detail", label: "Detay", width: 300 },
-    { key: "pf", label: "Fonksiyon", width: 100 },
+    { key: "action", label: "Aksiyon", width: 220 },
+    { key: "detail", label: "Detay", width: 320 },
+    { key: "module", label: "Modül", width: 120 },
     { key: "type", label: "Tür", width: 110 },
   ];
 
@@ -247,42 +344,39 @@ export function AuditScreen() {
       <ScreenHeader
         title="Denetim, Etik & Şeffaflık"
         subtitle="YZ açıklanabilirliği, izlenebilirlik ve insan gözetimi"
-        pfs={["PF-SYS04"]}
-        note="CON-004 / SEC-006 — Kimlik doğrulama olayları, veri değişiklikleri ve operasyonel kararlar kurcalamaya karşı korumalı biçimde kaydedilir."
+        note="Kimlik doğrulama olayları, veri değişiklikleri ve operasyonel kararlar sunucu tarafında, kurcalamaya karşı korumalı biçimde kaydedilir."
       />
 
       <Grid>
         {[
-          { label: "RBAC Aktif", icon: "shield" as const },
+          { label: "Rol Tabanlı Erişim", icon: "shield" as const },
           { label: "ÇFA Etkin", icon: "smartphone" as const },
           { label: "Denetim Kaydı", icon: "book-open" as const },
           { label: "Şifreleme (TLS)", icon: "lock" as const },
           { label: "Gizlilik Kontrolleri", icon: "eye" as const },
         ].map((c) => (
           <View key={c.label} style={[s.control, { flexBasis: 150, flexGrow: 1 }]}>
-            <View style={[s.controlIcon, { backgroundColor: alpha(C.success, 0.13) }]}>
-              <Feather name={c.icon} size={14} color={C.success} />
+            <View style={s.controlIcon}>
+              <Feather name={c.icon} size={14} color={C.txt} />
             </View>
-            <Txt size={10.5} weight="600" color={C.success} style={{ marginTop: 7, textAlign: "center" }}>
+            <Txt size={11} weight="600" color={C.txt} style={{ marginTop: 8, textAlign: "center" }}>
               {c.label}
             </Txt>
-            <Txt size={9} weight="700" color={C.success} style={{ marginTop: 2 }}>
-              AKTİF
-            </Txt>
+            <StatusBadge status="online" label="Aktif" />
           </View>
         ))}
       </Grid>
 
       <Cols min={330}>
         <Card padded>
-          <SectionHeader title="YZ Açıklanabilirliği" subtitle="QLT-006 · CON-008 · CON-013" />
+          <SectionHeader title="YZ Açıklanabilirliği" subtitle="Her öneri kaynağına kadar izlenebilir" />
           {[
             { p: "Güven Skoru", d: "Her öneride %0–100 güven aralığı zorunlu" },
             { p: "Kanıt Kaynakları", d: "Kullanılan veri kaynakları tam listeleniyor" },
-            { p: "Girdi Fonksiyonları", d: "Her öneri, üreten PF'lere kadar izlenebilir" },
+            { p: "Girdi Verileri", d: "Her öneri, onu üreten veri kümelerine kadar izlenebilir" },
             { p: "YZ Gerekçesi", d: "İnsan-okunabilir çıkarım zinciri sunuluyor" },
             { p: "Model Versiyonu", d: "Her çıktıda model sürümü belirtiliyor" },
-            { p: "İzlenebilirlik", d: "Onay kişisi, zamanı ve gerekçesi loglanır" },
+            { p: "Karar Kaydı", d: "Onay/ret kararı veren kişi, zamanı ve gerekçesi loglanır" },
           ].map(({ p, d }) => (
             <Row key={p} gap={9} style={s.ethicRow}>
               <Feather name="check-circle" size={13} color={C.success} style={{ marginTop: 1 }} />
@@ -299,14 +393,14 @@ export function AuditScreen() {
         </Card>
 
         <Card padded>
-          <SectionHeader title="İnsan Gözetimde Karar Mekanizması" subtitle="CON-007 · SEC-008 · ASM-002/003" />
+          <SectionHeader title="İnsan Gözetiminde Karar Mekanizması" subtitle="YZ karar destekler, karar vermez" />
           {[
-            { r: "Salt-Okunur Konsol", d: "Sistem yalnızca bilgi sunar; hiçbir öneriyi kendi başına uygulayamaz", critical: true },
-            { r: "Otomatik Uygulama Yasağı", d: "Hiçbir YZ önerisi onaysız uygulanamaz", critical: true },
-            { r: "Kararın Yeri", d: "Onay ve ret kararı yetkili personelce sistem dışında verilir", critical: false },
-            { r: "Tavsiye Niteliği", d: "Her çıktı gerekçesi, güven skoru ve girdi fonksiyonlarıyla birlikte sunulur", critical: false },
-            { r: "Nihai Sorumluluk", d: "Operasyonel sorumluluk yetkili kuruluş ve personelde kalır (ASM-003)", critical: false },
-            { r: "Gizlilik Koruması", d: "Mağdur ve hasta verileri anonimleştirilerek işlenir (CON-015)", critical: false },
+            { r: "Onay Zorunluluğu", d: "Hiçbir YZ önerisi karar verici onayı olmadan uygulamaya geçemez", critical: true },
+            { r: "Otomatik Uygulama Yasağı", d: "Otomatik uygulama ayarı kalıcı olarak kapalıdır", critical: true },
+            { r: "Gerekçeli Ret", d: "Reddedilen öneriler gerekçesiyle birlikte kaydedilir", critical: false },
+            { r: "Yeniden Hesaplama", d: "Karar verici öneriyi güncel veriyle yeniden hesaplatabilir", critical: false },
+            { r: "Nihai Sorumluluk", d: "Operasyonel sorumluluk yetkili kuruluş ve personelde kalır", critical: false },
+            { r: "Gizlilik Koruması", d: "Mağdur ve hasta verileri anonimleştirilerek işlenir", critical: false },
           ].map(({ r, d, critical }) => (
             <View key={r} style={[s.ethicRow, s.oversight, { borderLeftColor: critical ? C.warning : C.border }]}>
               <Txt size={11.5} weight="600" color={C.txt}>
@@ -327,18 +421,27 @@ export function AuditScreen() {
               Denetim Günlüğü
             </Txt>
             <Txt size={10.5} color={C.muted} style={{ marginTop: 2 }}>
-              {audit.length} kayıt · bu oturumdaki kararlar canlı eklenir
+              {loading ? "Yükleniyor…" : `${audit.length} kayıt · sunucudan canlı alınır`}
             </Txt>
           </View>
-          <Btn label="Dışa Aktar" small variant="outline" icon="download" />
+          <Btn
+            label={exporting ? "Aktarılıyor…" : "Dışa Aktar (CSV)"}
+            small
+            variant="outline"
+            icon="download"
+            disabled={exporting}
+            onPress={exportLogs}
+          />
         </Row>
+        {!!exportMsg && <Notice tone={exportMsg.tone} text={exportMsg.text} style={{ margin: 12, marginBottom: 0 }} />}
+        {!!error && <Notice tone="error" text={error} style={{ margin: 12 }} />}
         <Table
           cols={cols}
           rows={audit}
           keyExtractor={(r, i) => `${r.time}-${i}`}
           renderCell={(row, key) => {
             if (key === "type") return <StatusBadge status={row.type} />;
-            if (key === "pf") return <PFBadge id={row.pf} />;
+            if (key === "module") return <Tag label={row.module} />;
             if (key === "time") return <Txt size={11} color={C.muted} mono>{row.time}</Txt>;
             if (key === "user") return <Txt size={11} weight="500" color={C.txt}>{row.user}</Txt>;
             if (key === "role")
@@ -355,182 +458,13 @@ export function AuditScreen() {
   );
 }
 
-/* ══════════ GEREKSİNİM İZLENEBİLİRLİĞİ — SRS §5 ══════════ */
-
-export function TraceabilityScreen() {
-  const [tab, setTab] = useState<"pf" | "rtm" | "nfr">("pf");
-  const groups = Object.keys(PF_GROUP_LABEL) as PFGroup[];
-
-  return (
-    <Screen>
-      <ScreenHeader
-        title="Gereksinim İzlenebilirliği"
-        subtitle="SRS V1.0 ürün fonksiyonları, izlenebilirlik matrisi ve fonksiyonel olmayan gereksinimler"
-        pfs={["PF-SYS01"]}
-        note="Bu ekran, arayüzdeki her yeteneğin SRS'teki karşılığını göstermek için eklenmiştir (IEEE Std 29148-2018 §5)."
-      />
-
-      <Row gap={7} wrap>
-        {[
-          { k: "pf" as const, l: `Ürün Fonksiyonları (${PRODUCT_FUNCTIONS.length})` },
-          { k: "rtm" as const, l: "İzlenebilirlik Matrisi" },
-          { k: "nfr" as const, l: "Fonksiyonel Olmayan Gereksinimler" },
-        ].map((t) => (
-          <Pressable
-            key={t.k}
-            onPress={() => setTab(t.k)}
-            style={[s.tab, tab === t.k && { backgroundColor: alpha(C.blue, 0.16), borderColor: C.blue }]}
-          >
-            <Txt size={11.5} weight={tab === t.k ? "600" : "400"} color={tab === t.k ? C.blue : C.txt2}>
-              {t.l}
-            </Txt>
-          </Pressable>
-        ))}
-      </Row>
-
-      {tab === "pf" &&
-        groups.map((g) => {
-          const items = PRODUCT_FUNCTIONS.filter((p) => p.group === g);
-          return (
-            <Card key={g} padded>
-              <Row gap={8} style={{ marginBottom: 12 }}>
-                <Txt size={13} weight="700" color={C.txt}>
-                  {PF_GROUP_LABEL[g]}
-                </Txt>
-                <PFBadge id={g} color={C.gis} />
-                <Txt size={10.5} color={C.muted}>
-                  {items.length} fonksiyon
-                </Txt>
-              </Row>
-              {items.map((p) => (
-                <View key={p.id} style={s.pfRow}>
-                  <Row gap={8} style={{ alignItems: "flex-start" }}>
-                    <PFBadge id={p.id} />
-                    <View style={{ flex: 1 }}>
-                      <Txt size={11.5} weight="600" color={C.txt}>
-                        {p.title}
-                      </Txt>
-                      <Txt size={10.5} color={C.muted} style={{ marginTop: 3, lineHeight: 15 }}>
-                        {p.desc}
-                      </Txt>
-                      <Row gap={5} wrap style={{ marginTop: 6 }}>
-                        <Txt size={9} color={C.muted} upper weight="700">
-                          Aktör
-                        </Txt>
-                        {p.actors.length ? (
-                          p.actors.map((a) => (
-                            <View
-                              key={a}
-                              style={[s.actorChip, { backgroundColor: alpha(ROLE_BY_ID[a].color, 0.15) }]}
-                            >
-                              <Txt size={9} weight="700" color={ROLE_BY_ID[a].color}>
-                                {ROLE_BY_ID[a].short}
-                              </Txt>
-                            </View>
-                          ))
-                        ) : (
-                          <Txt size={9.5} color={C.muted} style={{ fontStyle: "italic" }}>
-                            otomatik (aktör etkileşimi yok)
-                          </Txt>
-                        )}
-                      </Row>
-                    </View>
-                  </Row>
-                </View>
-              ))}
-            </Card>
-          );
-        })}
-
-      {tab === "rtm" && (
-        <Card padded>
-          <SectionHeader
-            title="Gereksinim İzlenebilirlik Matrisi"
-            subtitle="SRS §5 — her fonksiyon grubunun kaynağı, ilgili kısıt/bağımlılıkları ve NFR'leri"
-          />
-          {TRACEABILITY.map((t) => (
-            <View key={t.group} style={s.rtmRow}>
-              <Row gap={8} style={{ marginBottom: 6 }}>
-                <PFBadge id={t.group} color={C.ai} />
-                <Txt size={12} weight="700" color={C.txt}>
-                  {t.label}
-                </Txt>
-              </Row>
-              <Txt size={10.5} color={C.txt2} style={{ marginBottom: 8 }}>
-                <Txt size={10.5} color={C.muted} weight="700">
-                  Kaynak / Gerçekleyen:{" "}
-                </Txt>
-                {t.source}
-              </Txt>
-              <Txt size={9} weight="700" color={C.muted} upper style={{ marginBottom: 4 }}>
-                İlgili Kısıt / Bağımlılık
-              </Txt>
-              <Row gap={4} wrap style={{ marginBottom: 8 }}>
-                {t.related.map((r) => (
-                  <PFBadge key={r} id={r} color={C.gis} />
-                ))}
-              </Row>
-              <Txt size={9} weight="700" color={C.muted} upper style={{ marginBottom: 4 }}>
-                İlgili NFR
-              </Txt>
-              <Row gap={4} wrap>
-                {t.nfr.map((r) => (
-                  <PFBadge key={r} id={r} color={C.warning} />
-                ))}
-              </Row>
-            </View>
-          ))}
-        </Card>
-      )}
-
-      {tab === "nfr" && (
-        <>
-          {[
-            { title: "Kısıtlar (SRS §2.4)", data: CONSTRAINTS, color: C.gis },
-            { title: "Güvenlik Gereksinimleri (SRS §4.2)", data: SECURITY_REQS, color: C.danger },
-            { title: "Performans Gereksinimleri (SRS §4.1)", data: PERFORMANCE_REQS, color: C.warning },
-          ].map((sec) => (
-            <Card key={sec.title} padded>
-              <SectionHeader title={sec.title} />
-              {sec.data.map((r) => (
-                <Row key={r.id} gap={9} style={{ marginBottom: 9, alignItems: "flex-start" }}>
-                  <PFBadge id={r.id} color={sec.color} />
-                  <Txt size={11} color={C.txt2} style={{ flex: 1, lineHeight: 16 }}>
-                    {r.text}
-                  </Txt>
-                </Row>
-              ))}
-            </Card>
-          ))}
-          <Card padded>
-            <SectionHeader title="Yazılım Kalite Nitelikleri (SRS §4.3)" />
-            {QUALITY_REQS.map((r) => (
-              <Row key={r.id} gap={9} style={{ marginBottom: 9, alignItems: "flex-start" }}>
-                <PFBadge id={r.id} color={C.ai} />
-                <View style={{ flex: 1 }}>
-                  <Txt size={11.5} weight="600" color={C.txt}>
-                    {r.attr}
-                  </Txt>
-                  <Txt size={11} color={C.txt2} style={{ marginTop: 2, lineHeight: 16 }}>
-                    {r.text}
-                  </Txt>
-                </View>
-              </Row>
-            ))}
-          </Card>
-        </>
-      )}
-    </Screen>
-  );
-}
-
-/* ══════════ KULLANICI YÖNETİMİ — SEC-001 / CON-003 ══════════ */
+/* ═══════════════════════ KULLANICI YÖNETİMİ ═══════════════════════ */
 
 export function UsersScreen() {
   const cols: Col[] = [
     { key: "name", label: "Kullanıcı", width: 190 },
     { key: "email", label: "E-posta", width: 220 },
-    { key: "role", label: "Rol (Aktör)", width: 155 },
+    { key: "role", label: "Rol", width: 155 },
     { key: "title", label: "Görev", width: 155 },
     { key: "mfa", label: "ÇFA", width: 105 },
     { key: "last", label: "Son Giriş", width: 110 },
@@ -541,9 +475,8 @@ export function UsersScreen() {
     <Screen>
       <ScreenHeader
         title="Kullanıcı & Erişim Yönetimi"
-        subtitle="Rol tabanlı erişim kontrolü, aktör eşleşmesi ve ÇFA yönetimi"
-        pfs={["PF-SYS01"]}
-        note="CON-003 / SEC-001 / SEC-009 — Her role yalnızca sorumluluğu kadar erişim verilir."
+        subtitle="Rol tabanlı erişim kontrolü, kurum eşleşmesi ve ÇFA yönetimi"
+        note="Her role yalnızca sorumluluğu kadar erişim verilir (en az yetki ilkesi)."
       />
 
       <Grid>
@@ -554,10 +487,7 @@ export function UsersScreen() {
       </Grid>
 
       <Card padded>
-        <SectionHeader
-          title="Rol → Fonksiyon Yetki Matrisi"
-          subtitle="SRS §2.3 — her aktörün erişebildiği ürün fonksiyonları"
-        />
+        <SectionHeader title="Rol → Yetki Matrisi" subtitle="Her kurumun sistemde yapabildiği işlemler" />
         {ROLES.map((r) => (
           <View key={r.id} style={s.roleRow}>
             <Row gap={9} style={{ marginBottom: 7 }}>
@@ -570,13 +500,13 @@ export function UsersScreen() {
               </Txt>
               <View style={[s.countChip, { backgroundColor: alpha(r.color, 0.15) }]}>
                 <Txt size={9.5} weight="700" color={r.color} mono>
-                  {r.functions.length} PF
+                  {r.permissions.length} yetki
                 </Txt>
               </View>
             </Row>
             <Row gap={4} wrap>
-              {r.functions.map((f) => (
-                <PFBadge key={f} id={f} color={r.color} />
+              {r.permissions.map((p) => (
+                <Tag key={p} label={PERMISSION_LABEL[p]} color={r.color} />
               ))}
             </Row>
           </View>
@@ -588,7 +518,6 @@ export function UsersScreen() {
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Kullanıcı Listesi
           </Txt>
-          <Btn label="Kullanıcı Ekle" small variant="outline" icon="user-plus" />
         </Row>
         <Table
           cols={cols}
@@ -600,7 +529,7 @@ export function UsersScreen() {
               return (
                 <Row gap={8}>
                   <View style={[s.avatar, { backgroundColor: role?.color ?? C.blue }]}>
-                    <Txt size={9} weight="700" color="#fff">
+                    <Txt size={9} weight="700" color={C.onPrimary}>
                       {row.name.split(" ").map((p: string) => p[0]).join("").slice(0, 2)}
                     </Txt>
                   </View>
@@ -623,19 +552,14 @@ export function UsersScreen() {
             if (key === "mfa")
               return (
                 <Row gap={5}>
-                  <Feather
-                    name={row.mfa ? "shield" : "alert-triangle"}
-                    size={11}
-                    color={row.mfa ? C.success : C.danger}
-                  />
+                  <Feather name={row.mfa ? "shield" : "alert-triangle"} size={11} color={row.mfa ? C.success : C.danger} />
                   <Txt size={10.5} weight="600" color={row.mfa ? C.success : C.danger}>
                     {row.mfa ? "Etkin" : "Devre Dışı"}
                   </Txt>
                 </Row>
               );
             if (key === "status") return <StatusBadge status={row.status} />;
-            if (key === "email" || key === "last")
-              return <Txt size={10.5} color={C.muted} mono>{row[key]}</Txt>;
+            if (key === "email" || key === "last") return <Txt size={10.5} color={C.muted} mono>{row[key]}</Txt>;
             return <Txt size={11} color={C.txt2}>{row[key]}</Txt>;
           }}
         />
@@ -644,84 +568,132 @@ export function UsersScreen() {
   );
 }
 
-/* ══════════ VAULT & SIR YÖNETİMİ — PF-SYS03 / SEC-002 ══════════ */
+/* ═══════════════════════ VAULT & SIR YÖNETİMİ ═══════════════════════ */
 
 export function VaultScreen() {
-  const { log } = useApp();
-  const [rotated, setRotated] = useState<Record<string, boolean>>({});
+  const { bumpAudit } = useApp();
+  const { data: entries = [], error, reload } = useQuery(() => api.vault.list(), []);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  async function act(key: string, fn: () => Promise<VaultEntry>, done: string) {
+    setBusy(key);
+    setMsg(null);
+    try {
+      await fn();
+      setMsg({ tone: "success", text: done });
+      setEditing(null);
+      setValue("");
+      bumpAudit();
+      reload();
+    } catch (e) {
+      setMsg({ tone: "error", text: errorMessage(e) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const overdue = entries.filter((e) => e.status === "offline").length;
+  const soon = entries.filter((e) => e.status === "degraded").length;
 
   const cols: Col[] = [
     { key: "key", label: "Anahtar Yolu", width: 250 },
     { key: "type", label: "Tür", width: 140 },
     { key: "scope", label: "Kapsam", width: 180 },
-    { key: "rotated", label: "Son Rotasyon", width: 125 },
-    { key: "ttl", label: "TTL", width: 85 },
+    { key: "rotated", label: "Son Değişim", width: 120 },
+    { key: "ttl", label: "TTL", width: 80 },
     { key: "status", label: "Durum", width: 105 },
-    { key: "action", label: "İşlem", width: 110 },
+    { key: "action", label: "İşlem", width: 200 },
   ];
-
-  function rotate(key: string) {
-    setRotated((p) => ({ ...p, [key]: true }));
-    log("Vault Değeri Değiştirildi", `${key} anahtarı rotasyona alındı`, "change", "PF-SYS03");
-  }
 
   return (
     <Screen>
       <ScreenHeader
         title="Vault & Sır Yönetimi"
         subtitle="Kimlik bilgileri, şifreleme anahtarları ve hassas yapılandırma değerleri"
-        pfs={["PF-SYS03"]}
-        note="SEC-002 — Tüm sırlar Vault Servisi ile yönetilir ve düz metin olarak saklanmaz. Değerler burada asla görüntülenmez."
+        note="Tüm sırlar Vault Servisi ile yönetilir ve düz metin olarak saklanmaz. Değerler burada asla görüntülenmez."
       />
 
       <View style={s.vaultWarn}>
-        <Feather name="shield" size={14} color={C.gis} />
-        <Txt size={10.5} color={C.gis} style={{ flex: 1, lineHeight: 15 }}>
+        <Feather name="shield" size={14} color={C.txt} />
+        <Txt size={11} color={C.txt2} style={{ flex: 1, lineHeight: 16 }}>
           Sır değerleri arayüzde hiçbir koşulda gösterilmez; yalnızca meta veri (yol, tür, kapsam, rotasyon durumu)
-          listelenir. Her rotasyon işlemi denetim kaydına yazılır (SEC-006).
+          listelenir. Yeni değer yalnızca sunucuya iletilir ve her işlem denetim kaydına yazılır.
         </Txt>
       </View>
 
       <Grid>
-        <KPICard label="Yönetilen Sır" value={String(vaultEntries.length)} color={C.blue} icon="key" />
-        <KPICard label="Rotasyon Gecikmiş" value="1" sub="redis/stream" trend={1} color={C.danger} icon="alert-triangle" />
-        <KPICard label="Yaklaşan Rotasyon" value="1" sub="e112/mtls" color={C.warning} icon="clock" />
+        <KPICard label="Yönetilen Sır" value={String(entries.length)} color={C.blue} icon="key" />
+        <KPICard label="Rotasyon Gecikmiş" value={String(overdue)} trend={overdue || undefined} color={C.danger} icon="alert-triangle" />
+        <KPICard label="Yaklaşan Rotasyon" value={String(soon)} color={C.warning} icon="clock" />
         <KPICard label="Şifreleme" value="AES-256" sub="bekleyen veri" color={C.success} icon="lock" />
       </Grid>
+
+      {!!msg && <Notice tone={msg.tone} text={msg.text} />}
+      {!!error && <Notice tone="error" text={error} />}
+
+      {!!editing && (
+        <Card padded>
+          <SectionHeader title="Değer Güncelle" subtitle={editing} />
+          <TextInput
+            value={value}
+            onChangeText={setValue}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Yeni değer (en az 8 karakter)"
+            placeholderTextColor={C.muted}
+            style={s.input}
+          />
+          <Row gap={6} style={{ marginTop: 10 }}>
+            <Btn
+              label={busy === editing ? "Kaydediliyor…" : "Kaydet"}
+              icon="save"
+              small
+              disabled={value.length < 8 || busy !== null}
+              onPress={() => act(editing, () => api.vault.update(editing, value), `${editing} yeni değerle güncellendi.`)}
+              style={{ flex: 1 }}
+            />
+            <Btn label="Vazgeç" small variant="ghost" color={C.muted} onPress={() => { setEditing(null); setValue(""); }} style={{ flex: 1 }} />
+          </Row>
+        </Card>
+      )}
 
       <Card>
         <Row style={s.cardHead}>
           <Txt size={13} weight="600" color={C.txt} style={{ flex: 1 }}>
             Vault Girdileri
           </Txt>
-          <PFBadgeRow ids={["PF-SYS03", "SEC-002"]} />
         </Row>
         <Table
           cols={cols}
-          rows={vaultEntries}
+          rows={entries}
           keyExtractor={(r) => r.key}
-          renderCell={(row, key) => {
+          renderCell={(row: VaultEntry, key) => {
             if (key === "key") return <Txt size={11} color={C.txt} mono>{row.key}</Txt>;
-            if (key === "status")
-              return <StatusBadge status={rotated[row.key] ? "online" : row.status} />;
+            if (key === "status") return <StatusBadge status={row.status} />;
             if (key === "rotated")
               return (
-                <Txt size={11} color={rotated[row.key] ? C.success : C.txt2} mono>
-                  {rotated[row.key] ? "Az önce" : row.rotated}
+                <Txt size={11} color={row.rotated === "Az önce" ? C.success : C.txt2} mono>
+                  {row.rotated}
                 </Txt>
               );
             if (key === "action")
-              return rotated[row.key] ? (
+              return (
                 <Row gap={5}>
-                  <Feather name="check-circle" size={11} color={C.success} />
-                  <Txt size={10} color={C.success} weight="600">
-                    Yapıldı
-                  </Txt>
+                  <Btn
+                    label="Rotasyon"
+                    small
+                    variant="outline"
+                    disabled={busy !== null}
+                    onPress={() => act(row.key, () => api.vault.rotate(row.key), `${row.key} rotasyona alındı.`)}
+                  />
+                  <Btn label="Değiştir" small variant="outline" color={C.ai} disabled={busy !== null} onPress={() => { setEditing(row.key); setValue(""); setMsg(null); }} />
                 </Row>
-              ) : (
-                <Btn label="Rotasyon" small variant="outline" onPress={() => rotate(row.key)} />
               );
-            return <Txt size={11} color={C.txt2} mono={key === "ttl"}>{row[key]}</Txt>;
+            return <Txt size={11} color={C.txt2} mono={key === "ttl"}>{(row as any)[key]}</Txt>;
           }}
         />
       </Card>
@@ -729,9 +701,11 @@ export function VaultScreen() {
   );
 }
 
-/* ══════════ SİSTEM AYARLARI ══════════ */
+/* ═══════════════════════ SİSTEM AYARLARI ═══════════════════════ */
 
 export function SettingsScreen() {
+  const { role } = useApp();
+  const { mode, setMode } = useTheme();
   const [notif, setNotif] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [aiAuto, setAiAuto] = useState(false);
@@ -739,19 +713,55 @@ export function SettingsScreen() {
 
   return (
     <Screen>
-      <ScreenHeader
-        title="Sistem Ayarları"
-        subtitle="Platform yapılandırması ve tercihler"
-        pfs={["PF-SYS02", "PF-SYS03"]}
-      />
+      <ScreenHeader title="Ayarlar" subtitle="Görünüm, bildirim ve platform tercihleri" />
+
+      <Card padded>
+        <SectionHeader title="Görünüm" subtitle="Seçiminiz bu cihazda saklanır" />
+        <Row gap={10} wrap>
+          {([
+            { k: "dark", label: "Koyu tema", desc: "Siyah zemin, beyaz metin · varsayılan", icon: "moon" },
+            { k: "light", label: "Açık tema", desc: "Beyaz zemin, siyah metin", icon: "sun" },
+          ] as const).map((o) => {
+            const sel = mode === o.k;
+            return (
+              <Pressable
+                key={o.k}
+                onPress={() => setMode(o.k)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: sel }}
+                style={[s.themeOption, sel && { borderColor: C.txt }]}
+              >
+                <View style={[s.themePreview, { backgroundColor: o.k === "dark" ? "#0A0A0A" : "#FFFFFF" }]}>
+                  <View style={[s.themePreviewBar, { backgroundColor: o.k === "dark" ? "#000000" : "#0A0A0A" }]} />
+                  <View style={{ flex: 1, padding: 6, gap: 4 }}>
+                    <View style={[s.themePreviewLine, { backgroundColor: o.k === "dark" ? "#FAFAFA" : "#0A0A0A", width: "70%" }]} />
+                    <View style={[s.themePreviewLine, { backgroundColor: o.k === "dark" ? "#3A3A3A" : "#D4D4D8" }]} />
+                    <View style={[s.themePreviewLine, { backgroundColor: o.k === "dark" ? "#3A3A3A" : "#D4D4D8", width: "50%" }]} />
+                  </View>
+                </View>
+                <Row gap={8} style={{ marginTop: 10 }}>
+                  <Feather name={o.icon} size={14} color={C.txt} />
+                  <Txt size={12.5} weight="600" color={C.txt} style={{ flex: 1 }}>
+                    {o.label}
+                  </Txt>
+                  <View style={[s.radio, sel && { borderColor: C.txt }]}>{sel && <View style={s.radioDot} />}</View>
+                </Row>
+                <Txt size={11} color={C.muted} style={{ marginTop: 3 }}>
+                  {o.desc}
+                </Txt>
+              </Pressable>
+            );
+          })}
+        </Row>
+      </Card>
 
       <Cols min={320}>
         <Card padded>
           <SectionHeader title="Genel Ayarlar" />
           {[
-            { label: "Anlık Bildirimler", sub: "Kritik uyarıları anlık ilet (PF-SYS02)", val: notif, set: setNotif, locked: false },
+            { label: "Anlık Bildirimler", sub: "Kritik uyarıları anlık ilet", val: notif, set: setNotif, locked: false },
             { label: "Otomatik Yenileme", sub: "Verileri 30 sn'de bir güncelle", val: autoRefresh, set: setAutoRefresh, locked: false },
-            { label: "YZ Otomatik Uygulama", sub: "CON-007 / SEC-008 gereği kalıcı olarak devre dışıdır", val: aiAuto, set: setAiAuto, locked: true },
+            { label: "YZ Otomatik Uygulama", sub: "YZ önerileri insan onayı olmadan uygulanamaz; kalıcı olarak kapalıdır", val: aiAuto, set: setAiAuto, locked: true },
           ].map((o) => (
             <Row key={o.label} gap={12} style={{ marginBottom: 16 }}>
               <View style={{ flex: 1 }}>
@@ -794,20 +804,19 @@ export function SettingsScreen() {
           </Row>
         </Card>
 
+        {role?.id === "ADMIN" && (
         <Card padded>
-          <SectionHeader title="Platform Bilgisi" subtitle="CON-001 · DSN-001 · OTH-003" />
+          <SectionHeader title="Platform Bilgisi" />
           {[
             ["Versiyon", "MEDAIGENCY Lot C v1.0"],
-            ["Referans", "SRS V1.0 · IEEE 29148-2018"],
-            ["Ortam", "Üretim — TR-GOV-CLOUD"],
+            ["API Bağlantısı", API_MODE === "live" ? API_BASE_URL! : "Demo sunucu (cihaz içi)"],
+            ["Dağıtım", "Bulut · şirket içi · hibrit"],
             ["Mimari", "Olay güdümlü mikroservis"],
             ["Koordinasyon Çekirdeği", "Redis Stream + Redis Cache"],
             ["Geospatial Depo", "PostGIS + OSM Servisi"],
             ["Sismik Motor", "OpenQuake (Hazard + Risk)"],
             ["Gateway'ler", "Koordinasyon · Acil Durum · Backoffice"],
-            ["Veri Merkezi", "Ankara DC-1 (Birincil)"],
-            ["Yedek DC", "İstanbul DC-2 (Aktif)"],
-            ["Erişilebilirlik Hedefi", "≥%90/ay (QLT-002)"],
+            ["Erişilebilirlik Hedefi", "≥%90 / ay"],
             ["Destek", "support@medaigency.gov.tr"],
           ].map(([k, v]) => (
             <Row key={k} style={s.infoRow}>
@@ -820,12 +829,13 @@ export function SettingsScreen() {
             </Row>
           ))}
         </Card>
+        )}
       </Cols>
     </Screen>
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   cardHead: { padding: 13, borderBottomWidth: 1, borderBottomColor: C.border },
   typeChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, alignSelf: "flex-start" },
   notifIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
@@ -839,12 +849,21 @@ const s = StyleSheet.create({
   control: {
     backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: alpha(C.success, 0.3),
+    borderColor: C.border,
+    gap: 6,
     borderRadius: RADIUS.lg,
     padding: 12,
     alignItems: "center",
   },
-  controlIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  controlIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   ethicRow: { marginBottom: 9, alignItems: "flex-start" },
   oversight: {
     backgroundColor: C.cardEl,
@@ -860,9 +879,6 @@ const s = StyleSheet.create({
     borderColor: C.border,
     backgroundColor: C.cardEl,
   },
-  pfRow: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.border },
-  actorChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  rtmRow: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.border },
   roleRow: { paddingVertical: 11, borderTopWidth: 1, borderTopColor: C.border },
   roleDot: { width: 9, height: 9, borderRadius: 5 },
   countChip: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 },
@@ -873,10 +889,52 @@ const s = StyleSheet.create({
     gap: 9,
     padding: 12,
     borderRadius: RADIUS.md,
-    backgroundColor: alpha(C.gis, 0.1),
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: alpha(C.gis, 0.3),
+    borderColor: C.border,
+    borderLeftWidth: 3,
+    borderLeftColor: C.txt,
   },
+  input: {
+    backgroundColor: C.cardEl,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: C.txt,
+    fontSize: 12.5,
+    fontFamily: FONT,
+  },
+  themeOption: {
+    flexGrow: 1,
+    flexBasis: 220,
+    padding: 12,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.cardEl,
+  },
+  themePreview: {
+    height: 72,
+    flexDirection: "row",
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    overflow: "hidden",
+  },
+  themePreviewBar: { width: 22 },
+  themePreviewLine: { height: 6, borderRadius: 2, width: "90%" },
+  radio: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: C.borderStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.txt },
   infoRow: {
     justifyContent: "space-between",
     paddingVertical: 8,
@@ -884,4 +942,4 @@ const s = StyleSheet.create({
     borderBottomColor: C.border,
     gap: 12,
   },
-});
+}));

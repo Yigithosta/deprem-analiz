@@ -1,3 +1,4 @@
+import { C } from "../../theme/tokens";
 import React, { useEffect, useRef, useState } from "react";
 
 /**
@@ -48,7 +49,7 @@ export function MapFrame({
       srcDoc={html}
       title="MEDAIGENCY operasyonel harita"
       sandbox="allow-scripts"
-      style={{ width: "100%", height: "100%", border: "none", display: "block", background: "#07101f" }}
+      style={{ width: "100%", height: "100%", border: "none", display: "block", background: C.mapBg }}
     />
   );
 }

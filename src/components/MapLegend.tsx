@@ -1,7 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import Svg, { Polygon, Circle, Rect, Line } from "react-native-svg";
-import { C, alpha, RADIUS, hazardColor } from "../theme/tokens";
+import { C, alpha, RADIUS, hazardColor, themed } from "../theme/tokens";
 import { Txt, Row } from "./ui";
 import { HEAT_LAYERS, type GISLayers, type HeatLayer } from "./OperationalMap";
 
@@ -22,7 +22,7 @@ import { HEAT_LAYERS, type GISLayers, type HeatLayer } from "./OperationalMap";
 function HospitalGlyph({ color = C.critical }: { color?: string }) {
   return (
     <Svg width={26} height={26} viewBox="0 0 26 26">
-      <Circle cx={13} cy={13} r={11} stroke="#1e3a5f" strokeWidth={2.5} fill="none" />
+      <Circle cx={13} cy={13} r={11} stroke={C.borderStrong} strokeWidth={2.5} fill="none" />
       <Circle
         cx={13}
         cy={13}
@@ -44,7 +44,7 @@ function HospitalGlyph({ color = C.critical }: { color?: string }) {
 function SafeNodeGlyph({ color = C.gis }: { color?: string }) {
   return (
     <Svg width={26} height={26} viewBox="0 0 26 26">
-      <Circle cx={13} cy={13} r={11} stroke="#1e3a5f" strokeWidth={2.5} fill="none" />
+      <Circle cx={13} cy={13} r={11} stroke={C.borderStrong} strokeWidth={2.5} fill="none" />
       <Circle
         cx={13}
         cy={13}
@@ -177,7 +177,7 @@ export function MapLegend({ layers }: { layers: Partial<GISLayers> }) {
       desc: "Akdeniz üzerinden gelen yardım güzergâhı.",
     });
   if (layers.faults)
-    lines.push({ glyph: <LineGlyph color="#F87171" />, title: "Diri fay", desc: "Aktif fay zonunun yüzey izi." });
+    lines.push({ glyph: <LineGlyph color="#7F1D1D" />, title: "Diri fay", desc: "Aktif fay zonunun yüzey izi." });
 
   const activeHeat = HEAT_LAYERS.find((k) => layers[k]);
   const hasStatus = !!(layers.hospitals || layers.safeNodes);
@@ -305,7 +305,7 @@ function EntryRow({ glyph, title, desc }: Entry) {
   );
 }
 
-const s = StyleSheet.create({
+const s = themed(() => StyleSheet.create({
   wrap: {
     padding: 12,
     backgroundColor: C.card,
@@ -317,4 +317,4 @@ const s = StyleSheet.create({
   block: { flexGrow: 1, flexBasis: 210, minWidth: 190, maxWidth: 320 },
   glyphBox: { width: 26, alignItems: "center", justifyContent: "center", paddingTop: 1 },
   swatch: { width: 13, height: 13, borderRadius: 3, marginTop: 1 },
-});
+}));
